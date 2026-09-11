@@ -52,12 +52,12 @@ npm run build
 
 ## Supabase
 
-The schema lives in `supabase/migrations`. The hosted development project uses the reference `kisdyclkdzttmlsyxvbt`.
+The schema lives in `supabase/migrations`. Configure the hosted development project with your own Supabase project reference.
 
 After authenticating with the Supabase CLI:
 
 ```powershell
-npx supabase link --project-ref kisdyclkdzttmlsyxvbt
+npx supabase link --project-ref <your-project-ref>
 npx supabase db push
 ```
 
