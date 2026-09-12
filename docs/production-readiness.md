@@ -131,7 +131,7 @@ Use Stripe Checkout for starting subscriptions and Stripe Customer Portal for bi
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
-- `SNEAKER_SIGNAL_SERVICE_ROLE_KEY` (server only)
+- `SUPABASE_SERVICE_ROLE_KEY` (platform-provided server variable; never add this as a custom secret)
 - `RESEND_API_KEY` (server only)
 - `STRIPE_SECRET_KEY` (server only)
 - `STRIPE_WEBHOOK_SECRET` (server only)
@@ -144,7 +144,7 @@ The `send-release-reminders` Edge Function is service-role-only. It reads saved 
 
 Required server secrets:
 
-- `SNEAKER_SIGNAL_SERVICE_ROLE_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` (provided automatically to the Edge Function)
 - `RESEND_API_KEY`
 - `RESEND_FROM_EMAIL`
 - `REMINDER_FUNCTION_SECRET`
@@ -155,7 +155,7 @@ Local setup and deployment:
 ```sh
 npx supabase db lint
 npx supabase db reset
-npx supabase secrets set SNEAKER_SIGNAL_SERVICE_ROLE_KEY=... RESEND_API_KEY=... RESEND_FROM_EMAIL=... REMINDER_FUNCTION_SECRET=... APP_URL=https://sneaker-signal.example
+npx supabase secrets set RESEND_API_KEY=... RESEND_FROM_EMAIL=... REMINDER_FUNCTION_SECRET=... APP_URL=https://sneaker-signal.example
 npx supabase functions serve send-release-reminders --env-file supabase/.env
 npx supabase functions deploy send-release-reminders --no-verify-jwt
 ```
