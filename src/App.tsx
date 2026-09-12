@@ -37,6 +37,11 @@ function formatFreshness(timestamp: string | null) {
   return `Verified ${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(timestamp))}`
 }
 
+function describeAuthError(message: string) {
+  if (message.toLowerCase().includes('rate limit')) return 'Supabase temporarily limited sign-in emails. Wait a little while before trying again, or use a different email address.'
+  return `Sign-in email could not be sent: ${message}`
+}
+
 function retailerActionLabel(launchType: string, availabilityStatus: string) {
   const type = launchType.toLowerCase()
   const status = availabilityStatus.toLowerCase()
@@ -135,7 +140,7 @@ function App() {
     if (!supabase || !authEmail.trim()) return
     setAuthBusy(true); setAuthMessage('')
     const { error } = await supabase.auth.signInWithOtp({ email: authEmail.trim() })
-    setAuthMessage(error ? error.message : 'Check your email for a sign-in link.')
+    setAuthMessage(error ? describeAuthError(error.message) : 'Check your email for a sign-in link.')
     setAuthBusy(false)
   }
   const signOut = async () => { if (!supabase) return; setAuthBusy(true); await supabase.auth.signOut(); setAuthBusy(false) }
