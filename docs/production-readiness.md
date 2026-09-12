@@ -188,11 +188,11 @@ The delivery table uses a unique key, database claim function, lease timestamps,
 
 - [ ] Create development and production Supabase projects.
 - [ ] Run the initial migration in development and verify all tables, indexes, triggers, and RLS policies.
-- [ ] Replace the editor boolean with an explicit role model before inviting additional staff.
+- [x] Replace the editor boolean with the `public.app_role` enum before inviting additional staff; only the `editor` role receives protected editorial policies, and profile self-updates cannot change roles.
 - [ ] Add protected editor policies for creating, reviewing, publishing, archiving, and correcting releases and articles.
 - [ ] Add article records with author, category, source, publication status, published timestamp, and correction history.
 - [ ] Add a seed-data review step so no demo dates, placeholder profiles, or unverified image URLs reach production.
-- [ ] Add a migration smoke test that runs against an isolated database on every pull request.
+- [x] Add `docs/migration-smoke-test.sql`; run it after `npx supabase db reset` against the isolated local database or hosted development project.
 - [ ] Document the backup, restore, and migration rollback procedure.
 - [ ] Add an operational runbook for stale sources, conflicting dates, broken retailer links, and emergency unpublishing.
 
