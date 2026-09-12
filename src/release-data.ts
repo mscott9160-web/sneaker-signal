@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from './supabase-client'
 
 export type Release = {
   id: string
@@ -65,10 +65,6 @@ export type DatabaseRelease = {
 type DatabaseProduct = { name: string; colorway: string | null; image_url: string | null; brands: { name: string } | { name: string }[] | null }
 type DatabaseRetailerLaunch = { launch_url: string; launch_at: string | null; launch_type: string; availability_status: string; last_checked_at: string | null; retailers: { name: string } | { name: string }[] | null }
 type DatabaseReleaseSource = { field_coverage: string[]; verification_status: string; sources: { source_type: string; publisher: string; url: string; reliability_tier: number; captured_at: string } | { source_type: string; publisher: string; url: string; reliability_tier: number; captured_at: string }[] | null }
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null
 
 export function toRelease(row: DatabaseRelease): Release {
   const dateParts = formatReleaseDateParts(row.release_at, row.release_timezone)
