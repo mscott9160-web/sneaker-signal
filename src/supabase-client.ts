@@ -9,6 +9,21 @@ export type SavedRelease = {
   created_at: string
 }
 
+export type NotificationPreferences = {
+  user_id: string
+  email_enabled: boolean
+  digest_enabled: boolean
+  restock_enabled: boolean
+  reminder_hours: number[]
+  timezone: string
+  updated_at: string
+}
+
+export type NotificationPreferencesUpdate = Partial<Pick<
+  NotificationPreferences,
+  'email_enabled' | 'digest_enabled' | 'restock_enabled' | 'reminder_hours' | 'timezone'
+>>
+
 type Database = {
   public: {
     Tables: {
@@ -16,6 +31,12 @@ type Database = {
         Row: SavedRelease
         Insert: Pick<SavedRelease, 'user_id' | 'release_id'> & { collection_status?: CollectionStatus }
         Update: Partial<Pick<SavedRelease, 'collection_status'>>
+        Relationships: []
+      },
+      notification_preferences: {
+        Row: NotificationPreferences
+        Insert: Pick<NotificationPreferences, 'user_id'> & NotificationPreferencesUpdate
+        Update: NotificationPreferencesUpdate
         Relationships: []
       }
     },
@@ -78,4 +99,41 @@ export async function removeSavedRelease(userId: string, releaseId: string) {
     .eq('release_id', releaseId)
 
   return { error: error?.message ?? null }
+}
+
+export async function getNotificationPreferences(): Promise<{
+  preferences: NotificationPreferences | null
+  error: string | null
+}> {
+  if (!supabase) return { preferences: null, error: 'Supabase is not configured.' }
+
+  const { data: userData, error: userError } = await supabase.auth.getUser()
+  if (userError) return { preferences: null, error: userError.message }
+  if (!userData.user) return { preferences: null, error: 'Authentication required.' }
+
+  const { data, error } = await supabase
+    .from('notification_preferences')
+    .select('user_id, email_enabled, digest_enabled, restock_enabled, reminder_hours, timezone, updated_at')
+    .eq('user_id', userData.user.id)
+    .maybeSingle()
+
+  return { preferences: data, error: error?.message ?? null }
+}
+
+export async function upsertNotificationPreferences(
+  preferences: NotificationPreferencesUpdate,
+): Promise<{ preferences: NotificationPreferences | null; error: string | null }> {
+  if (!supabase) return { preferences: null, error: 'Supabase is not configured.' }
+
+  const { data: userData, error: userError } = await supabase.auth.getUser()
+  if (userError) return { preferences: null, error: userError.message }
+  if (!userData.user) return { preferences: null, error: 'Authentication required.' }
+
+  const { data, error } = await supabase
+    .from('notification_preferences')
+    .upsert({ user_id: userData.user.id, ...preferences })
+    .select('user_id, email_enabled, digest_enabled, restock_enabled, reminder_hours, timezone, updated_at')
+    .single()
+
+  return { preferences: data, error: error?.message ?? null }
 }

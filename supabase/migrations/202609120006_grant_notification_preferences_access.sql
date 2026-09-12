@@ -1,0 +1,1 @@
+grant select, insert, update on table public.notification_preferences to authenticated;

@@ -4,6 +4,15 @@ import './App.css'
 import { demoReleases, formatLaunchTime, isSafeRetailerUrl, loadReleases, type Release, type RetailerLaunch } from './release-data'
 import { getCurrentUser, listSavedReleases, removeSavedRelease, saveRelease, supabase } from './supabase-client'
 
+type NotificationPreferences = {
+  email_enabled: boolean
+  digest_enabled: boolean
+  restock_enabled: boolean
+  reminder_hours: number[]
+}
+
+const defaultNotificationPreferences: NotificationPreferences = { email_enabled: true, digest_enabled: true, restock_enabled: false, reminder_hours: [24, 1] }
+
 const articles = [
   { tag: 'CULTURE', title: 'Why everyone is suddenly wearing the “wrong” sneaker', time: '4 min read', image: 'https://images.unsplash.com/photo-1525966222134-fcfa99b8ae77?auto=format&fit=crop&w=1000&q=85' },
   { tag: 'FIRST LOOK', title: 'The next generation of the Air Jordan 1 is here', time: '2 min read', image: 'https://images.unsplash.com/photo-1551107696-a4b0c5a0d9a2?auto=format&fit=crop&w=1000&q=85' },
@@ -75,6 +84,10 @@ function App() {
   const [authEmail, setAuthEmail] = useState('')
   const [authMessage, setAuthMessage] = useState('')
   const [authBusy, setAuthBusy] = useState(false)
+  const [preferencesOpen, setPreferencesOpen] = useState(false)
+  const [notificationPreferences, setNotificationPreferences] = useState(defaultNotificationPreferences)
+  const [preferencesBusy, setPreferencesBusy] = useState(false)
+  const [preferencesMessage, setPreferencesMessage] = useState('')
   const [pendingSaves, setPendingSaves] = useState<string[]>([])
   const saveOperations = useRef<Record<string, number>>({})
 
@@ -135,6 +148,18 @@ function App() {
     })
     return () => { active = false }
   }, [dataSource, user])
+  useEffect(() => {
+    if (!user || !supabase) { setNotificationPreferences(defaultNotificationPreferences); return }
+    let active = true
+    setPreferencesBusy(true)
+    supabase.from('notification_preferences' as never).select('email_enabled, digest_enabled, restock_enabled, reminder_hours').eq('user_id', user.id).single().then(({ data, error }) => {
+      if (!active) return
+      if (error) setPreferencesMessage(`Notification preferences could not be loaded: ${error.message}`)
+      else if (data) setNotificationPreferences(data as unknown as NotificationPreferences)
+      setPreferencesBusy(false)
+    })
+    return () => { active = false }
+  }, [user])
   const requestMagicLink = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!supabase || !authEmail.trim()) return
@@ -143,7 +168,15 @@ function App() {
     setAuthMessage(error ? describeAuthError(error.message) : 'Check your email for a sign-in link.')
     setAuthBusy(false)
   }
-  const signOut = async () => { if (!supabase) return; setAuthBusy(true); await supabase.auth.signOut(); setAuthBusy(false) }
+  const signOut = async () => { if (!supabase) return; setAuthBusy(true); setPreferencesOpen(false); await supabase.auth.signOut(); setAuthBusy(false) }
+  const updateNotificationPreferences = async (update: Partial<NotificationPreferences>) => {
+    if (!supabase || !user) return
+    const next = { ...notificationPreferences, ...update }
+    setNotificationPreferences(next); setPreferencesBusy(true); setPreferencesMessage('')
+    const { error } = await supabase.from('notification_preferences' as never).upsert({ user_id: user.id, ...next } as never)
+    setPreferencesBusy(false)
+    setPreferencesMessage(error ? `Could not save notification preferences: ${error.message}` : 'Preferences saved. Reminder delivery is being prepared.')
+  }
   const toggleSaved = async (release: Release) => {
     if (release.provenance !== 'live') { setAuthMessage('Demo releases cannot be saved. Connect live data to persist releases.'); return }
     if (!supabase || !user) { setAuthMessage(supabase ? 'Sign in to save releases.' : 'Saving is disabled in demo mode; connect Supabase to persist releases.'); return }
@@ -184,8 +217,9 @@ function App() {
       <header className="topbar">
         <a className="wordmark" href="#top"><span>SNKR</span><i>signal</i></a>
         <nav><a className="nav-active" href="#releases">Releases</a><a href="#news">News</a><span className="inactive-nav" aria-disabled="true">Brands</span></nav>
-        <div className="top-actions"><span className="region-badge">US ONLY · USD</span><label className="search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search sneakers..." /></label>{user ? <button className="account-control" onClick={signOut} disabled={authBusy} aria-label="Sign out">Sign out</button> : supabase ? <form className="account-form" onSubmit={requestMagicLink}><label className="sr-only" htmlFor="auth-email">Email address</label><input id="auth-email" type="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} placeholder="Email to sign in" required /><button type="submit" disabled={authBusy}>{authBusy ? 'Sending...' : 'Sign in'}</button></form> : <span className="inactive-control" aria-label="Sign in unavailable">Demo mode</span>}</div>
+        <div className="top-actions"><span className="region-badge">US ONLY · USD</span><label className="search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search sneakers..." /></label>{user ? <><button className="account-control" onClick={() => setPreferencesOpen((open) => !open)} aria-expanded={preferencesOpen} aria-controls="notification-preferences">{preferencesOpen ? 'Close settings' : 'Account'}</button><button className="account-control" onClick={signOut} disabled={authBusy} aria-label="Sign out">Sign out</button></> : supabase ? <form className="account-form" onSubmit={requestMagicLink}><label className="sr-only" htmlFor="auth-email">Email address</label><input id="auth-email" type="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} placeholder="Email to sign in" required /><button type="submit" disabled={authBusy}>{authBusy ? 'Sending...' : 'Sign in'}</button></form> : <span className="inactive-control" aria-label="Sign in unavailable">Demo mode</span>}</div>
       </header>
+      {preferencesOpen && <section className="preferences-panel" id="notification-preferences" aria-labelledby="preferences-title"><div><p className="kicker">YOUR ROTATION</p><h2 id="preferences-title">Notification preferences</h2><p>Choose what you want to hear about. Reminder delivery is being prepared and is not sending emails yet.</p></div><div className="preference-options"><label><span><strong>Email reminders</strong><small>Get reminders for releases you save.</small></span><input type="checkbox" checked={notificationPreferences.email_enabled} disabled={preferencesBusy} onChange={(event) => void updateNotificationPreferences({ email_enabled: event.target.checked })} /></label><label><span><strong>Weekly digest</strong><small>A Friday edit of upcoming drops.</small></span><input type="checkbox" checked={notificationPreferences.digest_enabled} disabled={preferencesBusy} onChange={(event) => void updateNotificationPreferences({ digest_enabled: event.target.checked })} /></label><label><span><strong>Restock alerts</strong><small>Hear when saved pairs return.</small></span><input type="checkbox" checked={notificationPreferences.restock_enabled} disabled={preferencesBusy} onChange={(event) => void updateNotificationPreferences({ restock_enabled: event.target.checked })} /></label></div><fieldset><legend>Reminder timing</legend><label><input type="checkbox" checked={notificationPreferences.reminder_hours.includes(24)} disabled={preferencesBusy} onChange={(event) => void updateNotificationPreferences({ reminder_hours: event.target.checked ? [...notificationPreferences.reminder_hours, 24].sort((a, b) => b - a) : notificationPreferences.reminder_hours.filter((hours) => hours !== 24) })} /> 24 hours before</label><label><input type="checkbox" checked={notificationPreferences.reminder_hours.includes(1)} disabled={preferencesBusy} onChange={(event) => void updateNotificationPreferences({ reminder_hours: event.target.checked ? [...notificationPreferences.reminder_hours, 1].sort((a, b) => b - a) : notificationPreferences.reminder_hours.filter((hours) => hours !== 1) })} /> 1 hour before</label></fieldset>{preferencesBusy && <p className="preference-status" role="status">Saving preferences...</p>}{preferencesMessage && <p className="preference-status" role="status">{preferencesMessage}</p>}</section>}
 
       <section className="hero" id="top">
         <div className="hero-copy"><p className="eyebrow"><span className={`live-dot ${dataSource === 'demo' ? 'demo-dot' : ''}`} /> {dataSource === 'live' ? 'LIVE DATA' : 'DEMO CATALOG'} · US RELEASES · {formatToday()}</p><h1>The pulse of<br /><em>sneaker culture.</em></h1><p className="hero-deck">Release dates, first looks, and the stories behind the pairs everyone is talking about.</p><a className="hero-link" href="#releases">Explore today's drops <span>↘</span></a></div>
