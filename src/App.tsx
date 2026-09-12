@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
-import { demoReleases, formatLaunchTime, loadReleases, type Release } from './release-data'
+import { demoReleases, formatLaunchTime, isSafeRetailerUrl, loadReleases, type Release, type RetailerLaunch } from './release-data'
 
 const articles = [
   { tag: 'CULTURE', title: 'Why everyone is suddenly wearing the “wrong” sneaker', time: '4 min read', image: 'https://images.unsplash.com/photo-1525966222134-fcfa99b8ae77?auto=format&fit=crop&w=1000&q=85' },
@@ -8,8 +8,7 @@ const articles = [
 ]
 
 function releaseStatus(release: Release) {
-  const lifecycleStatus = release.status.toLowerCase()
-  if (['cancelled', 'sold out', 'postponed'].includes(lifecycleStatus)) return release.status.toUpperCase()
+  if (release.status) return release.status.replace(/_/g, ' ').toUpperCase()
   if (!release.releaseDate) return release.status
   const days = Math.ceil((new Date(release.releaseDate).getTime() - Date.now()) / 86400000)
   if (days <= 0) return 'Available now'
@@ -20,6 +19,32 @@ function releaseStatus(release: Release) {
 function optionalReleaseField(release: Release, field: string) {
   const value = (release as Release & Record<string, unknown>)[field]
   return typeof value === 'string' || typeof value === 'number' ? String(value) : null
+}
+
+function formatReleaseDateTime(release: Release) {
+  if (!release.releaseDate) return 'Launch time TBC'
+  return new Intl.DateTimeFormat('en-US', { timeZone: release.releaseTimezone, weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(new Date(release.releaseDate))
+}
+
+function formatRetailerDateTime(retailer: RetailerLaunch, release: Release) {
+  return retailer.launchAt ? formatLaunchTime(retailer.launchAt, release.releaseTimezone) ?? 'Launch time TBC' : 'Launch time TBC'
+}
+
+function formatFreshness(timestamp: string | null) {
+  if (!timestamp) return 'Verification pending'
+  return `Verified ${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(timestamp))}`
+}
+
+function retailerActionLabel(launchType: string, availabilityStatus: string) {
+  const type = launchType.toLowerCase()
+  const status = availabilityStatus.toLowerCase()
+  if (['raffle', 'draw'].includes(type)) return 'Enter raffle'
+  if (['online', 'in_store', 'restock'].includes(type) && !['sold_out', 'cancelled'].includes(status)) return 'Shop'
+  return 'View launch details'
+}
+
+function primaryRetailer(release: Release) {
+  return release.retailers.find((retailer) => isSafeRetailerUrl(retailer.url)) ?? null
 }
 
 function formatToday() {
@@ -43,10 +68,10 @@ function App() {
   const fetchReleases = () => {
     setLoading(true)
     setLoadError(null)
-    loadReleases().then(({ releases: loadedReleases, error }) => {
+    loadReleases().then(({ releases: loadedReleases, error, provenance }) => {
       setReleases(loadedReleases)
       setLoadError(error)
-      setDataSource(error ? 'demo' : 'live')
+      setDataSource(provenance)
       setLoading(false)
     })
   }
@@ -101,11 +126,11 @@ function App() {
       <section className="content" id="releases"><div className="section-heading"><div><p className="kicker">STAY AHEAD</p><h2>Upcoming releases <sup>{releases.length.toString().padStart(2, '0')}</sup></h2></div><div className="tabs">{['All releases', 'This week', 'Saved'].map((tab) => <button className={activeTab === tab ? 'active' : ''} onClick={() => setActiveTab(tab)} key={tab}>{tab}</button>)}</div></div>
         {loadError && <div className="status-message"><p>{loadError}</p><button onClick={fetchReleases}>Retry connection ↗</button></div>}
         {loading && <p className="empty" aria-live="polite">Loading releases...</p>}
-        {!loading && <div className="release-grid">{visibleReleases.map((release) => { const verified = optionalReleaseField(release, 'verified') || optionalReleaseField(release, 'verificationStatus'); const isSaved = saved.includes(release.id); return <article className="release-card" key={release.id} role="button" tabIndex={0} aria-label={`View details for ${release.brand} ${release.name}`} onClick={(event) => { setDialogTrigger(event.currentTarget); setSelectedRelease(release) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setDialogTrigger(event.currentTarget); setSelectedRelease(release) } }}><div className="release-image" style={{ backgroundColor: release.accent }}>{release.image ? <img src={release.image} alt={`${release.brand} ${release.name} product image`} /> : <span className="image-fallback">Product image unavailable</span>}<button className={`save ${isSaved ? 'saved' : ''}`} aria-label={isSaved ? `Remove ${release.name} from saved releases` : `Save ${release.name}`} title={isSaved ? 'Remove saved release' : 'Save release'} onClick={(event) => { event.stopPropagation(); setSaved((current) => current.includes(release.id) ? current.filter((id) => id !== release.id) : [...current, release.id]) }}>{isSaved ? '♥' : '♡'}</button><span className="release-date"><b>{release.day}</b>{release.month}</span></div><div className="release-info"><div><p className="brand">{release.brand}{verified && <span className="trust-badge"> · {verified}</span>}</p><h3>{release.name}</h3><p className="colorway">{release.color}</p></div><div className="release-meta"><strong>{release.price}</strong><span>{releaseStatus(release)}</span></div></div></article> })}</div>}
+        {!loading && <div className="release-grid">{visibleReleases.map((release) => { const verified = optionalReleaseField(release, 'verified') || optionalReleaseField(release, 'verificationStatus'); const isSaved = saved.includes(release.id); const retailer = primaryRetailer(release); return <article className="release-card" key={release.id} role="button" tabIndex={0} aria-label={`View details for ${release.brand} ${release.name}`} onClick={(event) => { setDialogTrigger(event.currentTarget); setSelectedRelease(release) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setDialogTrigger(event.currentTarget); setSelectedRelease(release) } }}><div className="release-image" style={{ backgroundColor: release.accent }}>{release.image ? <img src={release.image} alt={`${release.brand} ${release.name} product image`} /> : <span className="image-fallback">Product image unavailable</span>}<button className={`save ${isSaved ? 'saved' : ''}`} aria-label={isSaved ? `Remove ${release.name} from saved releases` : `Save ${release.name}`} title={isSaved ? 'Remove saved release' : 'Save release'} onClick={(event) => { event.stopPropagation(); setSaved((current) => current.includes(release.id) ? current.filter((id) => id !== release.id) : [...current, release.id]) }} onKeyDown={(event) => event.stopPropagation()}>{isSaved ? '♥' : '♡'}</button><span className="release-date"><b>{release.day}</b>{release.month}</span></div><div className="release-info"><div><p className="brand">{release.brand}{verified && <span className="trust-badge"> · {verified}</span>}</p><h3>{release.name}</h3><p className="colorway">{release.color}</p></div><div className="release-meta"><strong>{release.price}</strong><span>{releaseStatus(release)}</span></div></div><div className="release-signal"><span>{retailer ? formatRetailerDateTime(retailer, release) : formatReleaseDateTime(release)}</span><span>{formatFreshness(release.lastVerifiedAt)}</span>{retailer ? <a href={retailer.url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>{retailerActionLabel(retailer.launchType, retailer.availabilityStatus)} <b>↗</b></a> : <span className="action-unavailable">Launch link unavailable</span>}</div></article> })}</div>}
         {!loading && visibleReleases.length === 0 && <p className="empty">{activeTab === 'Saved' ? 'No saved releases match your search.' : activeTab === 'This week' ? 'No releases are scheduled this week.' : 'No releases match your search.'}</p>}
       </section>
 
-      {selectedRelease && <div className="release-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedRelease(null) }}><section className="release-dialog" role="dialog" aria-modal="true" aria-labelledby="release-dialog-title" aria-describedby="release-dialog-description"><button className="dialog-close" aria-label="Close release details" onClick={() => setSelectedRelease(null)}>×</button><div className="dialog-image" style={{ backgroundColor: selectedRelease.accent }}>{selectedRelease.image ? <img src={selectedRelease.image} alt={`${selectedRelease.brand} ${selectedRelease.name} product image`} /> : <span className="image-fallback">Product image unavailable</span>}</div><div className="dialog-copy"><p className="kicker">RELEASE DETAILS · {dataSource.toUpperCase()}</p><p className="brand">{selectedRelease.brand}</p><h2 id="release-dialog-title">{selectedRelease.name}</h2><p className="dialog-colorway" id="release-dialog-description">{selectedRelease.color}</p><dl className="dialog-details"><div><dt>Release date</dt><dd>{selectedRelease.day} {selectedRelease.month}</dd></div><div><dt>Launch time</dt><dd>{formatLaunchTime(selectedRelease.retailers[0]?.launchAt ?? selectedRelease.releaseDate, selectedRelease.releaseTimezone) ?? 'TBC'}</dd></div><div><dt>Timezone</dt><dd>{selectedRelease.releaseTimezone}</dd></div><div><dt>Price</dt><dd>{selectedRelease.price}</dd></div><div><dt>Status</dt><dd>{selectedRelease.status || 'Unconfirmed'}</dd></div></dl><div className="retailer-state"><p className="kicker">OFFICIAL RETAILERS</p>{selectedRelease.retailers.length > 0 ? <ul>{selectedRelease.retailers.map((retailer) => <li key={retailer.url}><a href={retailer.url} target="_blank" rel="noreferrer">{retailer.name}<span>↗</span></a></li>)}</ul> : <><p>Official launch links are not available yet.</p><span>COMING SOON</span></>}</div></div></section></div>}
+      {selectedRelease && <div className="release-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedRelease(null) }}><section className="release-dialog" role="dialog" aria-modal="true" aria-labelledby="release-dialog-title" aria-describedby="release-dialog-description"><button className="dialog-close" aria-label="Close release details" onClick={() => setSelectedRelease(null)}>×</button><div className="dialog-image" style={{ backgroundColor: selectedRelease.accent }}>{selectedRelease.image ? <img src={selectedRelease.image} alt={`${selectedRelease.brand} ${selectedRelease.name} product image`} /> : <span className="image-fallback">Product image unavailable</span>}</div><div className="dialog-copy"><p className="kicker">RELEASE DETAILS · {dataSource.toUpperCase()}</p><p className="brand">{selectedRelease.brand}</p><h2 id="release-dialog-title">{selectedRelease.name}</h2><p className="dialog-colorway" id="release-dialog-description">{selectedRelease.color}</p><p className="dialog-launch-time">{formatReleaseDateTime(selectedRelease)}</p><dl className="dialog-details"><div><dt>Lifecycle</dt><dd>{releaseStatus(selectedRelease)}</dd></div><div><dt>Verification</dt><dd>{formatFreshness(selectedRelease.lastVerifiedAt)}</dd></div><div><dt>Price</dt><dd>{selectedRelease.price}</dd></div><div><dt>Source</dt><dd>{selectedRelease.sources[0]?.publisher ?? 'Source pending'}</dd></div></dl><div className="retailer-state"><p className="kicker">OFFICIAL RETAILERS</p>{selectedRelease.retailers.length > 0 ? <ul>{selectedRelease.retailers.map((retailer) => <li key={retailer.url}><div><strong>{retailer.name}</strong><small>{retailer.availabilityStatus.replace('_', ' ')}</small><small>{formatRetailerDateTime(retailer, selectedRelease)}</small></div>{isSafeRetailerUrl(retailer.url) ? <a href={retailer.url} target="_blank" rel="noreferrer">{retailerActionLabel(retailer.launchType, retailer.availabilityStatus)} <span>↗</span></a> : <span className="action-unavailable">Launch link unavailable</span>}</li>)}</ul> : <><p>Official launch links are not available yet.</p><span>COMING SOON</span></>}</div></div></section></div>}
 
       <section className="lower-content" id="news"><div className="news-column"><div className="section-heading compact"><div><p className="kicker">THE FEED</p><h2>Fresh from the culture</h2></div><span className="view-all muted-control">Editorial preview</span></div><div className="article-grid">{articles.map((article) => <article className="news-card" key={article.title}><img src={article.image} alt="" /><div className="news-card-copy"><p className="kicker">{article.tag}</p><h3>{article.title}</h3><p className="read-time">{article.time} <span>→</span></p></div></article>)}</div></div><aside className="newsletter"><p className="kicker">NOISE, FILTERED</p><h2>Get the good stuff.</h2><p>A tight edit of the week's best drops, stories, and things worth knowing. In your inbox every Friday.</p>{newsletterSubmitted ? <p className="newsletter-result" role="status">Email captured locally. Newsletter delivery is not connected yet.</p> : <form onSubmit={(event) => { event.preventDefault(); if (!/^\S+@\S+\.\S+$/.test(newsletterEmail)) { setNewsletterError('Enter a valid email address.'); return } setNewsletterError(''); setNewsletterSubmitted(true) }}><label htmlFor="newsletter-email">Email address</label><input id="newsletter-email" type="email" value={newsletterEmail} onChange={(event) => setNewsletterEmail(event.target.value)} placeholder="you@example.com" required /><button type="submit">Save my email ↗</button>{newsletterError && <small className="newsletter-error">{newsletterError}</small>}</form>}<small>No spam. Just sneakers.</small></aside></section>
       <footer><span className="wordmark"><span>SNKR</span><i>signal</i></span><span>Built for the rotation · © {new Date().getFullYear()}</span><span>Instagram &nbsp; X &nbsp; Contact</span></footer>

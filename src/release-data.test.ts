@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { demoReleases, formatLaunchTime, formatReleaseDateParts, loadReleases, toRelease, type DatabaseRelease } from './release-data'
+import { demoReleases, formatLaunchTime, formatReleaseDateParts, isSafeRetailerUrl, loadReleases, toRelease, type DatabaseRelease } from './release-data'
 
 const liveRow: DatabaseRelease = {
   id: 'live-1',
@@ -42,6 +42,13 @@ describe('release data', () => {
   it('formats dates and launch times in the stored release timezone', () => {
     expect(formatReleaseDateParts('2026-09-13T02:00:00Z', 'America/New_York')).toEqual({ day: '12', month: 'SEP' })
     expect(formatLaunchTime('2026-09-13T12:00:00Z', 'America/New_York')).toBe('8:00 AM EDT')
+  })
+
+  it('accepts only well-formed HTTPS retailer URLs', () => {
+    expect(isSafeRetailerUrl('https://nike.example/launch')).toBe(true)
+    expect(isSafeRetailerUrl('http://nike.example/launch')).toBe(false)
+    expect(isSafeRetailerUrl('javascript:alert(1)')).toBe(false)
+    expect(isSafeRetailerUrl('not a URL')).toBe(false)
   })
 
   it('returns demo releases with demo provenance when live data is not configured', async () => {

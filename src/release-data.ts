@@ -117,6 +117,14 @@ export function toRelease(row: DatabaseRelease): Release {
 
 export type ReleaseLoadResult = { releases: Release[]; error: string | null; provenance: 'live' | 'demo' }
 
+export function isSafeRetailerUrl(value: string) {
+  try {
+    return new URL(value).protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 export async function loadReleases(): Promise<ReleaseLoadResult> {
   if (!supabase) return { releases: demoReleases, error: 'Live releases are not configured. Showing the demo catalog.', provenance: 'demo' }
 
