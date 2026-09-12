@@ -2,16 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import './App.css'
 import { demoReleases, formatLaunchTime, isSafeRetailerUrl, loadReleases, type Release, type RetailerLaunch } from './release-data'
-import { getCurrentUser, listSavedReleases, removeSavedRelease, saveRelease, supabase } from './supabase-client'
+import { getCurrentUser, getNotificationPreferences, listSavedReleases, removeSavedRelease, saveRelease, supabase, upsertNotificationPreferences, type NotificationPreferences } from './supabase-client'
 
-type NotificationPreferences = {
-  email_enabled: boolean
-  digest_enabled: boolean
-  restock_enabled: boolean
-  reminder_hours: number[]
+const defaultNotificationPreferences: NotificationPreferences = { user_id: '', email_enabled: true, digest_enabled: true, restock_enabled: false, reminder_hours: [24, 1], timezone: 'America/New_York', updated_at: '' }
+
+function formatNotificationTimezone(timezone: string) {
+  const displayName = new Intl.DateTimeFormat('en-US', { timeZone: timezone, timeZoneName: 'long' }).formatToParts(new Date()).find((part) => part.type === 'timeZoneName')?.value
+  return displayName ? `${displayName} (${timezone})` : timezone
 }
-
-const defaultNotificationPreferences: NotificationPreferences = { email_enabled: true, digest_enabled: true, restock_enabled: false, reminder_hours: [24, 1] }
 
 const articles = [
   { tag: 'CULTURE', title: 'Why everyone is suddenly wearing the “wrong” sneaker', time: '4 min read', image: 'https://images.unsplash.com/photo-1525966222134-fcfa99b8ae77?auto=format&fit=crop&w=1000&q=85' },
@@ -152,10 +150,10 @@ function App() {
     if (!user || !supabase) { setNotificationPreferences(defaultNotificationPreferences); return }
     let active = true
     setPreferencesBusy(true)
-    supabase.from('notification_preferences' as never).select('email_enabled, digest_enabled, restock_enabled, reminder_hours').eq('user_id', user.id).single().then(({ data, error }) => {
+    getNotificationPreferences().then(({ preferences, error }) => {
       if (!active) return
-      if (error) setPreferencesMessage(`Notification preferences could not be loaded: ${error.message}`)
-      else if (data) setNotificationPreferences(data as unknown as NotificationPreferences)
+      if (error) setPreferencesMessage(`Notification preferences could not be loaded: ${error}`)
+      else if (preferences) setNotificationPreferences(preferences)
       setPreferencesBusy(false)
     })
     return () => { active = false }
@@ -173,9 +171,9 @@ function App() {
     if (!supabase || !user) return
     const next = { ...notificationPreferences, ...update }
     setNotificationPreferences(next); setPreferencesBusy(true); setPreferencesMessage('')
-    const { error } = await supabase.from('notification_preferences' as never).upsert({ user_id: user.id, ...next } as never)
+    const { error } = await upsertNotificationPreferences(next)
     setPreferencesBusy(false)
-    setPreferencesMessage(error ? `Could not save notification preferences: ${error.message}` : 'Preferences saved. Reminder delivery is being prepared.')
+    setPreferencesMessage(error ? `Could not save notification preferences: ${error}` : 'Preferences saved. Email delivery is not active yet.')
   }
   const toggleSaved = async (release: Release) => {
     if (release.provenance !== 'live') { setAuthMessage('Demo releases cannot be saved. Connect live data to persist releases.'); return }
@@ -219,7 +217,7 @@ function App() {
         <nav><a className="nav-active" href="#releases">Releases</a><a href="#news">News</a><span className="inactive-nav" aria-disabled="true">Brands</span></nav>
         <div className="top-actions"><span className="region-badge">US ONLY · USD</span><label className="search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search sneakers..." /></label>{user ? <><button className="account-control" onClick={() => setPreferencesOpen((open) => !open)} aria-expanded={preferencesOpen} aria-controls="notification-preferences">{preferencesOpen ? 'Close settings' : 'Account'}</button><button className="account-control" onClick={signOut} disabled={authBusy} aria-label="Sign out">Sign out</button></> : supabase ? <form className="account-form" onSubmit={requestMagicLink}><label className="sr-only" htmlFor="auth-email">Email address</label><input id="auth-email" type="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} placeholder="Email to sign in" required /><button type="submit" disabled={authBusy}>{authBusy ? 'Sending...' : 'Sign in'}</button></form> : <span className="inactive-control" aria-label="Sign in unavailable">Demo mode</span>}</div>
       </header>
-      {preferencesOpen && <section className="preferences-panel" id="notification-preferences" aria-labelledby="preferences-title"><div><p className="kicker">YOUR ROTATION</p><h2 id="preferences-title">Notification preferences</h2><p>Choose what you want to hear about. Reminder delivery is being prepared and is not sending emails yet.</p></div><div className="preference-options"><label><span><strong>Email reminders</strong><small>Get reminders for releases you save.</small></span><input type="checkbox" checked={notificationPreferences.email_enabled} disabled={preferencesBusy} onChange={(event) => void updateNotificationPreferences({ email_enabled: event.target.checked })} /></label><label><span><strong>Weekly digest</strong><small>A Friday edit of upcoming drops.</small></span><input type="checkbox" checked={notificationPreferences.digest_enabled} disabled={preferencesBusy} onChange={(event) => void updateNotificationPreferences({ digest_enabled: event.target.checked })} /></label><label><span><strong>Restock alerts</strong><small>Hear when saved pairs return.</small></span><input type="checkbox" checked={notificationPreferences.restock_enabled} disabled={preferencesBusy} onChange={(event) => void updateNotificationPreferences({ restock_enabled: event.target.checked })} /></label></div><fieldset><legend>Reminder timing</legend><label><input type="checkbox" checked={notificationPreferences.reminder_hours.includes(24)} disabled={preferencesBusy} onChange={(event) => void updateNotificationPreferences({ reminder_hours: event.target.checked ? [...notificationPreferences.reminder_hours, 24].sort((a, b) => b - a) : notificationPreferences.reminder_hours.filter((hours) => hours !== 24) })} /> 24 hours before</label><label><input type="checkbox" checked={notificationPreferences.reminder_hours.includes(1)} disabled={preferencesBusy} onChange={(event) => void updateNotificationPreferences({ reminder_hours: event.target.checked ? [...notificationPreferences.reminder_hours, 1].sort((a, b) => b - a) : notificationPreferences.reminder_hours.filter((hours) => hours !== 1) })} /> 1 hour before</label></fieldset>{preferencesBusy && <p className="preference-status" role="status">Saving preferences...</p>}{preferencesMessage && <p className="preference-status" role="status">{preferencesMessage}</p>}</section>}
+      {preferencesOpen && <section className="preferences-panel" id="notification-preferences" aria-labelledby="preferences-title"><div><p className="kicker">YOUR ROTATION</p><h2 id="preferences-title">Notification preferences</h2><p>Choose and save the reminders you want. Your choices are stored now; email delivery is not active yet.</p><div className="delivery-status" role="status"><strong>Email delivery</strong><span>Not active yet. These settings are saved for when a verified delivery service is connected.</span></div></div><div className="preference-options"><label><span><strong>Email reminders</strong><small>Save your reminder preference for releases you save.</small></span><input type="checkbox" checked={notificationPreferences.email_enabled} disabled={preferencesBusy} onChange={(event) => void updateNotificationPreferences({ email_enabled: event.target.checked })} /></label><label><span><strong>Weekly digest</strong><small>Save your weekly digest preference.</small></span><input type="checkbox" checked={notificationPreferences.digest_enabled} disabled={preferencesBusy} onChange={(event) => void updateNotificationPreferences({ digest_enabled: event.target.checked })} /></label><label><span><strong>Restock alerts</strong><small>Save your preference for saved pairs returning.</small></span><input type="checkbox" checked={notificationPreferences.restock_enabled} disabled={preferencesBusy} onChange={(event) => void updateNotificationPreferences({ restock_enabled: event.target.checked })} /></label></div><fieldset><legend>Reminder timing</legend><label><input type="checkbox" checked={notificationPreferences.reminder_hours.includes(24)} disabled={preferencesBusy} onChange={(event) => void updateNotificationPreferences({ reminder_hours: event.target.checked ? [...notificationPreferences.reminder_hours, 24].sort((a, b) => b - a) : notificationPreferences.reminder_hours.filter((hours) => hours !== 24) })} /> 24 hours before</label><label><input type="checkbox" checked={notificationPreferences.reminder_hours.includes(1)} disabled={preferencesBusy} onChange={(event) => void updateNotificationPreferences({ reminder_hours: event.target.checked ? [...notificationPreferences.reminder_hours, 1].sort((a, b) => b - a) : notificationPreferences.reminder_hours.filter((hours) => hours !== 1) })} /> 1 hour before</label><div className="timezone-setting"><strong>Timezone</strong><span>{formatNotificationTimezone(notificationPreferences.timezone)}</span><small>Used for reminder times.</small></div></fieldset>{preferencesBusy && <p className="preference-status" role="status">Saving preferences...</p>}{preferencesMessage && <p className="preference-status" role="status">{preferencesMessage}</p>}</section>}
 
       <section className="hero" id="top">
         <div className="hero-copy"><p className="eyebrow"><span className={`live-dot ${dataSource === 'demo' ? 'demo-dot' : ''}`} /> {dataSource === 'live' ? 'LIVE DATA' : 'DEMO CATALOG'} · US RELEASES · {formatToday()}</p><h1>The pulse of<br /><em>sneaker culture.</em></h1><p className="hero-deck">Release dates, first looks, and the stories behind the pairs everyone is talking about.</p><a className="hero-link" href="#releases">Explore today's drops <span>↘</span></a></div>

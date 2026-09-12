@@ -138,6 +138,34 @@ Use Stripe Checkout for starting subscriptions and Stripe Customer Portal for bi
 - `STRIPE_PRICE_ID_PLUS`
 - `APP_URL`
 
+### Release Reminder Delivery
+
+The `send-release-reminders` Edge Function is service-role-only. It reads saved releases and notification preferences, claims each due `(user, release, reminder_hours)` once in `release_reminder_deliveries`, and sends through Resend. It never returns or exposes the service-role key.
+
+Required server secrets:
+
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `RESEND_API_KEY`
+- `RESEND_FROM_EMAIL`
+- `REMINDER_FUNCTION_SECRET`
+- `APP_URL` (required in production so every reminder includes a preferences/unsubscribe destination)
+
+Local setup and deployment:
+
+```sh
+npx supabase db lint
+npx supabase db reset
+npx supabase secrets set SUPABASE_SERVICE_ROLE_KEY=... RESEND_API_KEY=... RESEND_FROM_EMAIL=... REMINDER_FUNCTION_SECRET=... APP_URL=https://sneaker-signal.example
+npx supabase functions serve send-release-reminders --env-file supabase/.env
+npx supabase functions deploy send-release-reminders --no-verify-jwt
+```
+
+Invoke it only from a protected scheduler with `POST` and `x-reminder-secret: $REMINDER_FUNCTION_SECRET`. The function does not accept browser authorization headers or CORS requests. In production, missing server or provider secrets fail closed with a generic `503`; a no-send response is available only when `DRY_RUN=true` is explicitly configured. Do not put any of these values in Vite variables, source control, or browser requests.
+
+Reminders require a saved release with `editorial_status = 'published'`, `status = 'confirmed'`, a valid future `release_at`, enabled email preferences, and a selected positive reminder hour. Postponed, cancelled, sold-out, and expired releases are excluded. Invalid preference timezones fall back to the release timezone, then UTC. Production sends fail closed without `APP_URL`; the email includes `/settings/notifications` as the preferences/unsubscribe destination.
+
+The delivery table uses a unique key, database claim function, lease timestamps, retry timestamps, and bounded attempt counts. Network and transient provider failures are retried with capped exponential backoff; exhausted or permanent failures become `dead_letter`. A lease is always cleared after a fetch or provider response so an exception cannot strand the row. Resend acknowledgement and the database update cannot be atomic: a provider may accept a message before the function loses its response, so a later retry can duplicate it. Configure and use a provider-supported idempotency key when Resend exposes one, and monitor dead-letter rows.
+
 ## Additional Implementation To-Dos
 
 - [ ] Create development and production Supabase projects.
