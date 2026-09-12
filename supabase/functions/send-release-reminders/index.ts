@@ -52,7 +52,7 @@ Deno.serve(async (request) => {
     .select('user_id, release_id')
     .eq('collection_status', 'saved')
 
-  if (savedReleaseError) return json({ error: 'Could not load reminder candidates.' }, 500)
+  if (savedReleaseError) return json({ error: 'Could not load reminder candidates.', stage: 'saved_releases' }, 500)
 
   const releaseIds = [...new Set((savedReleases ?? []).map((row) => row.release_id))]
   const { data: releases, error: releaseError } = releaseIds.length === 0
@@ -66,14 +66,14 @@ Deno.serve(async (request) => {
       .eq('region', 'US')
       .not('release_at', 'is', null)
 
-  if (releaseError) return json({ error: 'Could not load reminder candidates.' }, 500)
+  if (releaseError) return json({ error: 'Could not load reminder candidates.', stage: 'releases' }, 500)
 
   const productIds = [...new Set((releases ?? []).map((release) => release.product_id))]
   const { data: products, error: productError } = productIds.length === 0
     ? { data: [], error: null }
     : await admin.from('products').select('id, name').in('id', productIds)
 
-  if (productError) return json({ error: 'Could not load reminder candidates.' }, 500)
+  if (productError) return json({ error: 'Could not load reminder candidates.', stage: 'products' }, 500)
 
   const releasesById = new Map((releases ?? []).map((release: ReleaseRow) => [release.id, release]))
   const productsById = new Map((products ?? []).map((product: ProductRow) => [product.id, product]))
@@ -91,7 +91,7 @@ Deno.serve(async (request) => {
     .from('notification_preferences')
     .select('user_id, email_enabled, reminder_hours, timezone')
     .eq('email_enabled', true)
-  if (preferenceError) return json({ error: 'Could not load reminder preferences.' }, 500)
+  if (preferenceError) return json({ error: 'Could not load reminder preferences.', stage: 'notification_preferences' }, 500)
   const preferencesByUser = new Map((preferenceRows ?? []).map((preference) => [preference.user_id, preference]))
 
   let sent = 0
