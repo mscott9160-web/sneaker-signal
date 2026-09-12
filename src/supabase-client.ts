@@ -33,11 +33,15 @@ export const supabase: SupabaseClient<Database> | null = supabaseUrl && supabase
   ? createClient<Database>(supabaseUrl, supabaseAnonKey)
   : null
 
+export function isMissingAuthSessionError(error: { code?: string | null; message?: string | null } | null) {
+  return error?.code === 'session_missing' || error?.message === 'Auth session missing!'
+}
+
 export async function getCurrentUser(): Promise<{ user: User | null; error: string | null }> {
   if (!supabase) return { user: null, error: 'Supabase is not configured.' }
 
   const { data, error } = await supabase.auth.getUser()
-  return { user: data.user, error: error?.message ?? null }
+  return { user: data.user, error: isMissingAuthSessionError(error) ? null : error?.message ?? null }
 }
 
 export async function listSavedReleases(userId: string): Promise<{ savedReleases: SavedRelease[]; error: string | null }> {
