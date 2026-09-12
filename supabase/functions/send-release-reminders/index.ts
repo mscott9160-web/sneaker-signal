@@ -30,7 +30,7 @@ Deno.serve(async (request) => {
   if ((!resendKey || !fromEmail || !appUrl) && !dryRun) return safeError(503)
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  const serviceRoleKey = Deno.env.get('SNEAKER_SIGNAL_SERVICE_ROLE_KEY')
   if (!supabaseUrl || !serviceRoleKey) return safeError(503)
 
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } })
