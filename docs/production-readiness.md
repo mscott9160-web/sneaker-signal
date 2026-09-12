@@ -162,6 +162,24 @@ npx supabase functions deploy send-release-reminders --no-verify-jwt
 
 Invoke it only from a protected scheduler with `POST` and `x-reminder-secret: $REMINDER_FUNCTION_SECRET`. The function does not accept browser authorization headers or CORS requests. In production, missing server or provider secrets fail closed with a generic `503`; a no-send response is available only when `DRY_RUN=true` is explicitly configured. Do not put any of these values in Vite variables, source control, or browser requests.
 
+### Production Scheduler Runbook
+
+Use Supabase `pg_cron` plus `pg_net` only after enabling both extensions in the production project. The scheduler runs hourly at five minutes past the hour (`5 * * * *`), which matches the function's one-hour delivery window while keeping the job to 24 invocations per day. The function's database claim is the duplicate-delivery guard; overlapping invocations are safe because a delivery lease prevents a second claim.
+
+The repository intentionally does not create this job in a migration. A migration cannot safely discover or provision the already-deployed Edge Function secret, and embedding `REMINDER_FUNCTION_SECRET` in SQL would expose it in source control or migration history. Instead, use [docs/reminder-scheduler.sql](reminder-scheduler.sql) after creating a Vault secret named `sneaker-signal-reminder-function-secret`. The script reads `vault.decrypted_secrets` only when `pg_net` executes the request, refuses an unset project URL or missing secret, and leaves an existing job unchanged.
+
+#### Dry-run first
+
+1. Deploy the function with `DRY_RUN=true` and the production server secrets except that no email is sent while this flag is enabled.
+2. Create the Vault secret with the exact same random value configured as the function's `REMINDER_FUNCTION_SECRET`. Never paste that value into the SQL file, a migration, browser code, or logs.
+3. Invoke the deployed function manually with `POST`, `Content-Type: application/json`, and `x-reminder-secret`. Confirm a `200` response containing `"dry_run":true`, and confirm `sent` is `0`.
+4. Run [docs/reminder-scheduler.sql](reminder-scheduler.sql) once in the production SQL Editor. Confirm the job exists in Dashboard -> Integrations -> Cron and inspect `net._http_response` or the function logs after the next hourly run.
+5. Set `DRY_RUN=false` (or remove it) only after the dry-run response, function logs, candidate data, and provider configuration are verified. Invoke once manually and confirm the expected delivery and `release_reminder_deliveries` state before relying on the hourly job.
+
+The scheduler sends only `Content-Type: application/json` and the protected `x-reminder-secret` header. It does not send a service-role key or browser `Authorization` header. Keep the function deployed with `--no-verify-jwt`; the function's dedicated secret is its invocation control. Treat the Vault secret and the function environment value as one credential pair and rotate both together.
+
+To disable delivery immediately, disable or unschedule `sneaker-signal-send-release-reminders` in Dashboard -> Integrations -> Cron, or run `select cron.unschedule('sneaker-signal-send-release-reminders');`. To revoke invocation access, rotate or remove `REMINDER_FUNCTION_SECRET` from the Edge Function, then rotate or remove the matching Vault secret with `select vault.delete_secret('<vault-secret-id>');` after looking up its id by name. Do not delete a secret by guessing its id. Re-enable only after a new pair has been configured and the dry-run procedure has passed again. Existing in-flight HTTP requests may finish; disabling the cron job prevents future invocations.
+
 Reminders require a saved release with `editorial_status = 'published'`, `status = 'confirmed'`, a valid future `release_at`, enabled email preferences, and a selected positive reminder hour. Postponed, cancelled, sold-out, and expired releases are excluded. Invalid preference timezones fall back to the release timezone, then UTC. Production sends fail closed without `APP_URL`; the email includes `/settings/notifications` as the preferences/unsubscribe destination.
 
 The delivery table uses a unique key, database claim function, lease timestamps, retry timestamps, and bounded attempt counts. Network and transient provider failures are retried with capped exponential backoff; exhausted or permanent failures become `dead_letter`. A lease is always cleared after a fetch or provider response so an exception cannot strand the row. Resend acknowledgement and the database update cannot be atomic: a provider may accept a message before the function loses its response, so a later retry can duplicate it. Configure and use a provider-supported idempotency key when Resend exposes one, and monitor dead-letter rows.
