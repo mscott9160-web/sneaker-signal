@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { demoReleases, formatLaunchTime, formatReleaseDateParts, isSafeRetailerUrl, loadReleases, toRelease, type DatabaseRelease } from './release-data'
+
+vi.mock('./supabase-client', () => ({ supabase: null }))
 
 const liveRow: DatabaseRelease = {
   id: 'live-1',
