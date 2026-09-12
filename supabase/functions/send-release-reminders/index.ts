@@ -14,6 +14,18 @@ type Candidate = {
   product: { name: string } | { name: string }[] | null
 }
 
+type ReleaseRow = {
+  id: string
+  product_id: string
+  release_at: string
+  release_timezone: string
+}
+
+type ProductRow = {
+  id: string
+  name: string
+}
+
 Deno.serve(async (request) => {
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
@@ -35,16 +47,46 @@ Deno.serve(async (request) => {
 
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } })
   const now = new Date()
-  const { data: candidates, error: candidateError } = await admin
+  const { data: savedReleases, error: savedReleaseError } = await admin
     .from('saved_releases')
-    .select('user_id, release_id, releases!inner(release_at, release_timezone, editorial_status, status, region, products!inner(name))')
+    .select('user_id, release_id')
     .eq('collection_status', 'saved')
-    .eq('releases.editorial_status', 'published')
-    .eq('releases.status', 'confirmed')
-    .eq('releases.region', 'US')
-    .not('releases.release_at', 'is', null)
 
-  if (candidateError) return json({ error: 'Could not load reminder candidates.' }, 500)
+  if (savedReleaseError) return json({ error: 'Could not load reminder candidates.' }, 500)
+
+  const releaseIds = [...new Set((savedReleases ?? []).map((row) => row.release_id))]
+  const { data: releases, error: releaseError } = releaseIds.length === 0
+    ? { data: [], error: null }
+    : await admin
+      .from('releases')
+      .select('id, product_id, release_at, release_timezone')
+      .in('id', releaseIds)
+      .eq('editorial_status', 'published')
+      .eq('status', 'confirmed')
+      .eq('region', 'US')
+      .not('release_at', 'is', null)
+
+  if (releaseError) return json({ error: 'Could not load reminder candidates.' }, 500)
+
+  const productIds = [...new Set((releases ?? []).map((release) => release.product_id))]
+  const { data: products, error: productError } = productIds.length === 0
+    ? { data: [], error: null }
+    : await admin.from('products').select('id, name').in('id', productIds)
+
+  if (productError) return json({ error: 'Could not load reminder candidates.' }, 500)
+
+  const releasesById = new Map((releases ?? []).map((release: ReleaseRow) => [release.id, release]))
+  const productsById = new Map((products ?? []).map((product: ProductRow) => [product.id, product]))
+  const candidates = (savedReleases ?? []).flatMap((savedRelease) => {
+    const release = releasesById.get(savedRelease.release_id)
+    if (!release) return []
+    return [{
+      user_id: savedRelease.user_id,
+      release_id: savedRelease.release_id,
+      releases: { ...release, products: productsById.get(release.product_id) ?? null },
+    }]
+  })
+
   const { data: preferenceRows, error: preferenceError } = await admin
     .from('notification_preferences')
     .select('user_id, email_enabled, reminder_hours, timezone')
