@@ -1,139 +1,157 @@
-import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 
-export type CollectionStatus = 'saved' | 'bought' | 'missed' | 'passed'
+export type CollectionStatus = "saved" | "bought" | "missed" | "passed";
 
 export type SavedRelease = {
-  user_id: string
-  release_id: string
-  collection_status: CollectionStatus
-  created_at: string
-}
+  user_id: string;
+  release_id: string;
+  collection_status: CollectionStatus;
+  created_at: string;
+};
 
 export type NotificationPreferences = {
-  user_id: string
-  email_enabled: boolean
-  digest_enabled: boolean
-  restock_enabled: boolean
-  reminder_hours: number[]
-  timezone: string
-  updated_at: string
-}
+  user_id: string;
+  email_enabled: boolean;
+  digest_enabled: boolean;
+  restock_enabled: boolean;
+  reminder_hours: number[];
+  timezone: string;
+  updated_at: string;
+};
 
-export type NotificationPreferencesUpdate = Partial<Pick<
-  NotificationPreferences,
-  'email_enabled' | 'digest_enabled' | 'restock_enabled' | 'reminder_hours' | 'timezone'
->>
+export type NotificationPreferencesUpdate = Partial<
+  Pick<
+    NotificationPreferences,
+    "email_enabled" | "digest_enabled" | "restock_enabled" | "reminder_hours" | "timezone"
+  >
+>;
 
 type Database = {
   public: {
     Tables: {
       saved_releases: {
-        Row: SavedRelease
-        Insert: Pick<SavedRelease, 'user_id' | 'release_id'> & { collection_status?: CollectionStatus }
-        Update: Partial<Pick<SavedRelease, 'collection_status'>>
-        Relationships: []
-      },
+        Row: SavedRelease;
+        Insert: Pick<SavedRelease, "user_id" | "release_id"> & {
+          collection_status?: CollectionStatus;
+        };
+        Update: Partial<Pick<SavedRelease, "collection_status">>;
+        Relationships: [];
+      };
       notification_preferences: {
-        Row: NotificationPreferences
-        Insert: Pick<NotificationPreferences, 'user_id'> & NotificationPreferencesUpdate
-        Update: NotificationPreferencesUpdate
-        Relationships: []
-      }
-    },
-    Views: Record<string, never>,
-    Functions: Record<string, never>,
-    Enums: Record<string, never>,
-    CompositeTypes: Record<string, never>
-  }
-}
+        Row: NotificationPreferences;
+        Insert: Pick<NotificationPreferences, "user_id"> & NotificationPreferencesUpdate;
+        Update: NotificationPreferencesUpdate;
+        Relationships: [];
+      };
+    };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
+    Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
+  };
+};
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-export const supabase: SupabaseClient<Database> | null = supabaseUrl && supabaseAnonKey
-  ? createClient<Database>(supabaseUrl, supabaseAnonKey)
-  : null
+export const supabase: SupabaseClient<Database> | null =
+  supabaseUrl && supabaseAnonKey ? createClient<Database>(supabaseUrl, supabaseAnonKey) : null;
 
-export function isMissingAuthSessionError(error: { code?: string | null; message?: string | null } | null) {
-  return error?.code === 'session_missing' || error?.message === 'Auth session missing!'
+export function isMissingAuthSessionError(
+  error: { code?: string | null; message?: string | null } | null,
+) {
+  return error?.code === "session_missing" || error?.message === "Auth session missing!";
 }
 
 export async function getCurrentUser(): Promise<{ user: User | null; error: string | null }> {
-  if (!supabase) return { user: null, error: 'Supabase is not configured.' }
+  if (!supabase) return { user: null, error: "Supabase is not configured." };
 
-  const { data, error } = await supabase.auth.getUser()
-  return { user: data.user, error: isMissingAuthSessionError(error) ? null : error?.message ?? null }
+  const { data, error } = await supabase.auth.getUser();
+  return {
+    user: data.user,
+    error: isMissingAuthSessionError(error) ? null : (error?.message ?? null),
+  };
 }
 
-export async function listSavedReleases(userId: string): Promise<{ savedReleases: SavedRelease[]; error: string | null }> {
-  if (!supabase) return { savedReleases: [], error: 'Supabase is not configured.' }
+export async function listSavedReleases(
+  userId: string,
+): Promise<{ savedReleases: SavedRelease[]; error: string | null }> {
+  if (!supabase) return { savedReleases: [], error: "Supabase is not configured." };
 
   const { data, error } = await supabase
-    .from('saved_releases')
-    .select('user_id, release_id, collection_status, created_at')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false })
+    .from("saved_releases")
+    .select("user_id, release_id, collection_status, created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
 
-  return { savedReleases: data ?? [], error: error?.message ?? null }
+  return { savedReleases: data ?? [], error: error?.message ?? null };
 }
 
-export async function saveRelease(userId: string, releaseId: string, collectionStatus: CollectionStatus = 'saved') {
-  if (!supabase) return { savedRelease: null, error: 'Supabase is not configured.' }
+export async function saveRelease(
+  userId: string,
+  releaseId: string,
+  collectionStatus: CollectionStatus = "saved",
+) {
+  if (!supabase) return { savedRelease: null, error: "Supabase is not configured." };
 
   const { data, error } = await supabase
-    .from('saved_releases')
+    .from("saved_releases")
     .upsert({ user_id: userId, release_id: releaseId, collection_status: collectionStatus })
-    .select('user_id, release_id, collection_status, created_at')
-    .single()
+    .select("user_id, release_id, collection_status, created_at")
+    .single();
 
-  return { savedRelease: data, error: error?.message ?? null }
+  return { savedRelease: data, error: error?.message ?? null };
 }
 
 export async function removeSavedRelease(userId: string, releaseId: string) {
-  if (!supabase) return { error: 'Supabase is not configured.' }
+  if (!supabase) return { error: "Supabase is not configured." };
 
   const { error } = await supabase
-    .from('saved_releases')
+    .from("saved_releases")
     .delete()
-    .eq('user_id', userId)
-    .eq('release_id', releaseId)
+    .eq("user_id", userId)
+    .eq("release_id", releaseId);
 
-  return { error: error?.message ?? null }
+  return { error: error?.message ?? null };
 }
 
 export async function getNotificationPreferences(): Promise<{
-  preferences: NotificationPreferences | null
-  error: string | null
+  preferences: NotificationPreferences | null;
+  error: string | null;
 }> {
-  if (!supabase) return { preferences: null, error: 'Supabase is not configured.' }
+  if (!supabase) return { preferences: null, error: "Supabase is not configured." };
 
-  const { data: userData, error: userError } = await supabase.auth.getUser()
-  if (userError) return { preferences: null, error: userError.message }
-  if (!userData.user) return { preferences: null, error: 'Authentication required.' }
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) return { preferences: null, error: userError.message };
+  if (!userData.user) return { preferences: null, error: "Authentication required." };
 
   const { data, error } = await supabase
-    .from('notification_preferences')
-    .select('user_id, email_enabled, digest_enabled, restock_enabled, reminder_hours, timezone, updated_at')
-    .eq('user_id', userData.user.id)
-    .maybeSingle()
+    .from("notification_preferences")
+    .select(
+      "user_id, email_enabled, digest_enabled, restock_enabled, reminder_hours, timezone, updated_at",
+    )
+    .eq("user_id", userData.user.id)
+    .maybeSingle();
 
-  return { preferences: data, error: error?.message ?? null }
+  return { preferences: data, error: error?.message ?? null };
 }
 
 export async function upsertNotificationPreferences(
   preferences: NotificationPreferencesUpdate,
 ): Promise<{ preferences: NotificationPreferences | null; error: string | null }> {
-  if (!supabase) return { preferences: null, error: 'Supabase is not configured.' }
+  if (!supabase) return { preferences: null, error: "Supabase is not configured." };
 
-  const { data: userData, error: userError } = await supabase.auth.getUser()
-  if (userError) return { preferences: null, error: userError.message }
-  if (!userData.user) return { preferences: null, error: 'Authentication required.' }
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) return { preferences: null, error: userError.message };
+  if (!userData.user) return { preferences: null, error: "Authentication required." };
 
   const { data, error } = await supabase
-    .from('notification_preferences')
+    .from("notification_preferences")
     .upsert({ user_id: userData.user.id, ...preferences })
-    .select('user_id, email_enabled, digest_enabled, restock_enabled, reminder_hours, timezone, updated_at')
-    .single()
+    .select(
+      "user_id, email_enabled, digest_enabled, restock_enabled, reminder_hours, timezone, updated_at",
+    )
+    .single();
 
-  return { preferences: data, error: error?.message ?? null }
+  return { preferences: data, error: error?.message ?? null };
 }
