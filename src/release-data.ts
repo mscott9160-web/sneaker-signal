@@ -41,96 +41,89 @@ export type ReleaseSource = {
   verificationStatus: string;
 };
 
-export const demoReleases: Release[] = [
+type DemoSeed = Pick<Release, "id" | "brand" | "name" | "color" | "price" | "image" | "accent"> & {
+  daysFromToday: number;
+};
+
+const demoSeeds: DemoSeed[] = [
   {
     id: "demo-1",
-    releaseDate: "2026-09-13",
-    day: "13",
-    month: "SEP",
+    daysFromToday: 2,
     brand: "NIKE",
     name: "Air Max 95 OG",
     color: "Neon / Black",
     price: "$185",
-    currency: "USD",
     image:
       "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=900&q=85",
-    status: "",
     accent: "#e1ff00",
-    retailers: [],
-    provenance: "demo",
-    releaseTimezone: "America/New_York",
-    launchType: "online",
-    lastVerifiedAt: null,
-    publishedAt: null,
-    sources: [],
   },
   {
     id: "demo-2",
-    releaseDate: "2026-09-17",
-    day: "17",
-    month: "SEP",
+    daysFromToday: 5,
     brand: "ADIDAS",
     name: "Samba OG Wales Bonner",
     color: "Cream White",
     price: "$160",
-    currency: "USD",
     image:
       "https://images.unsplash.com/photo-1552346154-21d32810aba3?auto=format&fit=crop&w=900&q=85",
-    status: "",
     accent: "#ff6446",
-    retailers: [],
-    provenance: "demo",
-    releaseTimezone: "America/New_York",
-    launchType: "online",
-    lastVerifiedAt: null,
-    publishedAt: null,
-    sources: [],
   },
   {
     id: "demo-3",
-    releaseDate: "2026-09-20",
-    day: "20",
-    month: "SEP",
+    daysFromToday: 11,
     brand: "NEW BALANCE",
     name: "990v6 Made in USA",
     color: "Vintage Grey",
     price: "$200",
-    currency: "USD",
     image:
       "https://images.unsplash.com/photo-1539185441755-769473a23570?auto=format&fit=crop&w=900&q=85",
-    status: "",
     accent: "#a8c7ff",
-    retailers: [],
-    provenance: "demo",
-    releaseTimezone: "America/New_York",
-    launchType: "online",
-    lastVerifiedAt: null,
-    publishedAt: null,
-    sources: [],
   },
   {
     id: "demo-4",
-    releaseDate: "2026-09-24",
-    day: "24",
-    month: "SEP",
+    daysFromToday: 18,
     brand: "SAUCONY",
     name: "ProGrid Omni 9",
     color: "Silver / Green",
     price: "$150",
-    currency: "USD",
     image:
       "https://images.unsplash.com/photo-1560769629-975ec94e6a86?auto=format&fit=crop&w=900&q=85",
-    status: "",
     accent: "#d4ffbd",
-    retailers: [],
-    provenance: "demo",
-    releaseTimezone: "America/New_York",
-    launchType: "online",
-    lastVerifiedAt: null,
-    publishedAt: null,
-    sources: [],
   },
 ];
+
+const demoTimezone = "America/New_York";
+
+/**
+ * Sample catalog shown only when Supabase is not configured or unreachable.
+ * Dates are generated relative to `now` so the demo never shows stale "upcoming"
+ * releases, and each launch is a full timestamp (15:00 UTC, morning US Eastern)
+ * so the date tile and the formatted launch time always agree.
+ */
+export function buildDemoReleases(now = new Date()): Release[] {
+  return demoSeeds.map(({ daysFromToday, ...seed }) => {
+    const launch = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + daysFromToday, 15),
+    );
+    const releaseDate = launch.toISOString();
+    return {
+      ...seed,
+      releaseDate,
+      ...formatReleaseDateParts(releaseDate, demoTimezone),
+      currency: "USD",
+      status: "",
+      retailers: [],
+      provenance: "demo",
+      releaseTimezone: demoTimezone,
+      launchType: "online",
+      lastVerifiedAt: null,
+      publishedAt: null,
+      sources: [],
+    };
+  });
+}
+
+export const demoReleases: Release[] = buildDemoReleases();
 
 export type DatabaseRelease = {
   id: string;
@@ -253,6 +246,11 @@ export function isSafeRetailerUrl(value: string) {
   }
 }
 
+/** Releases stay listed for a day after launch so same-day drops remain visible. */
+export function upcomingCutoff(now = new Date()) {
+  return new Date(now.getTime() - 24 * 60 * 60 * 1000);
+}
+
 export async function loadReleases(): Promise<ReleaseLoadResult> {
   if (!supabase)
     return {
@@ -271,7 +269,9 @@ export async function loadReleases(): Promise<ReleaseLoadResult> {
     )
     .eq("editorial_status", "published")
     .eq("region", "US")
-    .order("release_at", { ascending: true });
+    .neq("status", "expired")
+    .or(`release_at.is.null,release_at.gte.${upcomingCutoff().toISOString()}`)
+    .order("release_at", { ascending: true, nullsFirst: false });
 
   if (error)
     return {
@@ -303,4 +303,21 @@ export function formatLaunchTime(launchAt: string | null, timeZone: string) {
     minute: "2-digit",
     timeZoneName: "short",
   }).format(new Date(launchAt));
+}
+
+/** Whole calendar days from today until `timestamp`, both measured in `timeZone`. */
+export function calendarDaysUntil(timestamp: string, timeZone: string, now = new Date()) {
+  const dayNumber = (date: Date) => {
+    const [month, day, year] = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+      .format(date)
+      .split("/")
+      .map(Number);
+    return Date.UTC(year, month - 1, day) / 86400000;
+  };
+  return dayNumber(new Date(timestamp)) - dayNumber(now);
 }

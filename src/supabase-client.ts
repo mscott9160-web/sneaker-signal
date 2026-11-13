@@ -26,6 +26,16 @@ export type NotificationPreferencesUpdate = Partial<
   >
 >;
 
+export type Article = {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string | null;
+  category: string;
+  source_url: string | null;
+  published_at: string | null;
+};
+
 type Database = {
   public: {
     Tables: {
@@ -41,6 +51,12 @@ type Database = {
         Row: NotificationPreferences;
         Insert: Pick<NotificationPreferences, "user_id"> & NotificationPreferencesUpdate;
         Update: NotificationPreferencesUpdate;
+        Relationships: [];
+      };
+      articles: {
+        Row: Article & { editorial_status: string };
+        Insert: never;
+        Update: never;
         Relationships: [];
       };
     };
@@ -145,13 +161,39 @@ export async function upsertNotificationPreferences(
   if (userError) return { preferences: null, error: userError.message };
   if (!userData.user) return { preferences: null, error: "Authentication required." };
 
+  const { email_enabled, digest_enabled, restock_enabled, reminder_hours, timezone } = preferences;
+  const update = Object.fromEntries(
+    Object.entries({
+      email_enabled,
+      digest_enabled,
+      restock_enabled,
+      reminder_hours,
+      timezone,
+    }).filter(([, value]) => value !== undefined),
+  ) as NotificationPreferencesUpdate;
+
   const { data, error } = await supabase
     .from("notification_preferences")
-    .upsert({ user_id: userData.user.id, ...preferences })
+    .upsert({ ...update, user_id: userData.user.id })
     .select(
       "user_id, email_enabled, digest_enabled, restock_enabled, reminder_hours, timezone, updated_at",
     )
     .single();
 
   return { preferences: data, error: error?.message ?? null };
+}
+
+export async function listPublishedArticles(
+  limit = 4,
+): Promise<{ articles: Article[]; error: string | null }> {
+  if (!supabase) return { articles: [], error: null };
+
+  const { data, error } = await supabase
+    .from("articles")
+    .select("id, title, slug, excerpt, category, source_url, published_at")
+    .eq("editorial_status", "published")
+    .order("published_at", { ascending: false, nullsFirst: false })
+    .limit(limit);
+
+  return { articles: data ?? [], error: error?.message ?? null };
 }

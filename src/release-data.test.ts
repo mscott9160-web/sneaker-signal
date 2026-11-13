@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildDemoReleases,
+  calendarDaysUntil,
   demoReleases,
   formatLaunchTime,
   formatReleaseDateParts,
   isSafeRetailerUrl,
   loadReleases,
   toRelease,
+  upcomingCutoff,
   type DatabaseRelease,
 } from "./release-data";
 
@@ -166,6 +169,45 @@ describe("release data", () => {
         verificationStatus: "verified",
         capturedAt: null,
       }),
+    );
+  });
+});
+
+describe("demo catalog", () => {
+  const now = new Date("2026-11-13T02:00:00Z");
+  const demo = buildDemoReleases(now);
+
+  it("only contains upcoming releases relative to today", () => {
+    for (const release of demo) {
+      expect(new Date(release.releaseDate!).getTime()).toBeGreaterThan(now.getTime());
+    }
+  });
+
+  it("shows the same calendar day on the date tile and in the launch time", () => {
+    for (const release of demo) {
+      const parts = formatReleaseDateParts(release.releaseDate, release.releaseTimezone);
+      expect({ day: release.day, month: release.month }).toEqual(parts);
+      const formatted = new Intl.DateTimeFormat("en-US", {
+        timeZone: release.releaseTimezone,
+        day: "2-digit",
+      }).format(new Date(release.releaseDate!));
+      expect(formatted).toBe(release.day);
+    }
+  });
+});
+
+describe("release timing", () => {
+  it("counts calendar days in the release timezone, not elapsed 24-hour periods", () => {
+    const now = new Date("2026-11-13T02:00:00Z"); // Nov 12, 9 PM in New York
+    expect(calendarDaysUntil("2026-11-15T15:00:00Z", "America/New_York", now)).toBe(3);
+    expect(calendarDaysUntil("2026-11-15T15:00:00Z", "UTC", now)).toBe(2);
+    expect(calendarDaysUntil("2026-11-13T01:00:00Z", "America/New_York", now)).toBe(0);
+    expect(calendarDaysUntil("2026-11-11T15:00:00Z", "America/New_York", now)).toBe(-1);
+  });
+
+  it("keeps launches listed for a day after they start", () => {
+    expect(upcomingCutoff(new Date("2026-11-13T12:00:00Z")).toISOString()).toBe(
+      "2026-11-12T12:00:00.000Z",
     );
   });
 });

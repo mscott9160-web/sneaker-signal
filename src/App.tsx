@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import "./App.css";
 import {
+  calendarDaysUntil,
   demoReleases,
   formatLaunchTime,
   isSafeRetailerUrl,
@@ -10,14 +11,18 @@ import {
   type RetailerLaunch,
 } from "./release-data";
 import { catalogLoadFailure } from "./release-model";
+import { SiteFooter } from "./SiteFooter";
+import { emailDeliveryLive, routePaths, type Route } from "./routes";
 import {
   getCurrentUser,
   getNotificationPreferences,
+  listPublishedArticles,
   listSavedReleases,
   removeSavedRelease,
   saveRelease,
   supabase,
   upsertNotificationPreferences,
+  type Article,
   type NotificationPreferences,
 } from "./supabase-client";
 
@@ -38,28 +43,27 @@ function formatNotificationTimezone(timezone: string) {
   return displayName ? `${displayName} (${timezone})` : timezone;
 }
 
-const articles = [
-  {
-    tag: "CULTURE",
-    title: "Why everyone is suddenly wearing the “wrong” sneaker",
-    time: "4 min read",
-    image:
-      "https://images.unsplash.com/photo-1525966222134-fcfa99b8ae77?auto=format&fit=crop&w=1000&q=85",
-  },
-  {
-    tag: "FIRST LOOK",
-    title: "The next generation of the Air Jordan 1 is here",
-    time: "2 min read",
-    image:
-      "https://images.unsplash.com/photo-1551107696-a4b0c5a0d9a2?auto=format&fit=crop&w=1000&q=85",
-  },
+const usTimezones = [
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Phoenix",
+  "America/Los_Angeles",
+  "America/Anchorage",
+  "Pacific/Honolulu",
 ];
+
+function formatArticleDate(timestamp: string | null) {
+  if (!timestamp) return null;
+  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium" }).format(new Date(timestamp));
+}
 
 function releaseStatus(release: Release) {
   if (release.status) return release.status.replace(/_/g, " ").toUpperCase();
   if (!release.releaseDate) return release.status;
-  const days = Math.ceil((new Date(release.releaseDate).getTime() - Date.now()) / 86400000);
-  if (days <= 0) return "Available now";
+  const days = calendarDaysUntil(release.releaseDate, release.releaseTimezone);
+  if (days < 0) return "Released";
+  if (days === 0) return "Today";
   if (days === 1) return "Tomorrow";
   return `In ${days} days`;
 }
@@ -123,16 +127,17 @@ function formatToday() {
     .toUpperCase();
 }
 
-function App() {
+function App({ route }: { route: Extract<Route, "home" | "notifications"> }) {
   const [activeTab, setActiveTab] = useState("All releases");
   const [search, setSearch] = useState("");
   const [saved, setSavedState] = useState<string[]>([]);
   const [releases, setReleases] = useState<Release[]>(demoReleases);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [newsletterEmail, setNewsletterEmail] = useState("");
-  const [newsletterSubmitted, setNewsletterSubmitted] = useState(false);
-  const [newsletterError, setNewsletterError] = useState("");
+  const [signupEmail, setSignupEmail] = useState("");
+  const [signupSent, setSignupSent] = useState(false);
+  const [signupError, setSignupError] = useState("");
+  const [articles, setArticles] = useState<Article[]>([]);
   const [selectedRelease, setSelectedRelease] = useState<Release | null>(null);
   const [dialogTrigger, setDialogTrigger] = useState<HTMLElement | null>(null);
   const [dataSource, setDataSource] = useState<"live" | "demo">("demo");
@@ -140,7 +145,7 @@ function App() {
   const [authEmail, setAuthEmail] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
-  const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [preferencesOpen, setPreferencesOpen] = useState(route === "notifications");
   const [notificationPreferences, setNotificationPreferences] = useState(
     defaultNotificationPreferences,
   );
@@ -203,6 +208,13 @@ function App() {
   }, [dialogTrigger, selectedRelease]);
   useEffect(() => {
     fetchReleases();
+    let active = true;
+    listPublishedArticles().then(({ articles: loadedArticles }) => {
+      if (active) setArticles(loadedArticles);
+    });
+    return () => {
+      active = false;
+    };
   }, []);
   useEffect(() => {
     if (!supabase) return;
@@ -252,16 +264,36 @@ function App() {
       active = false;
     };
   }, [user]);
+  const sendMagicLink = (email: string) =>
+    supabase!.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: `${window.location.origin}${window.location.pathname}` },
+    });
   const requestMagicLink = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!supabase || !authEmail.trim()) return;
     setAuthBusy(true);
     setAuthMessage("");
-    const { error } = await supabase.auth.signInWithOtp({ email: authEmail.trim() });
+    const { error } = await sendMagicLink(authEmail.trim());
     setAuthMessage(
       error ? describeAuthError(error.message) : "Check your email for a sign-in link.",
     );
     setAuthBusy(false);
+  };
+  const requestSignup = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!supabase) return;
+    const email = signupEmail.trim();
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      setSignupError("Enter a valid email address.");
+      return;
+    }
+    setSignupError("");
+    setAuthBusy(true);
+    const { error } = await sendMagicLink(email);
+    setAuthBusy(false);
+    if (error) setSignupError(describeAuthError(error.message));
+    else setSignupSent(true);
   };
   const signOut = async () => {
     if (!supabase) return;
@@ -281,7 +313,9 @@ function App() {
     setPreferencesMessage(
       error
         ? `Could not save notification preferences: ${error}`
-        : "Preferences saved. Email delivery is not active yet.",
+        : emailDeliveryLive
+          ? "Preferences saved."
+          : "Preferences saved. Email delivery is not active yet.",
     );
   };
   const toggleSaved = async (release: Release) => {
@@ -360,10 +394,7 @@ function App() {
           <a className="nav-active" href="#releases">
             Releases
           </a>
-          <a href="#news">News</a>
-          <span className="inactive-nav" aria-disabled="true">
-            Brands
-          </span>
+          {articles.length > 0 && <a href="#news">News</a>}
         </nav>
         <div className="top-actions">
           <span className="region-badge">US ONLY · USD</span>
@@ -418,7 +449,7 @@ function App() {
           )}
         </div>
       </header>
-      {preferencesOpen && (
+      {preferencesOpen && user && (
         <section
           className="preferences-panel"
           id="notification-preferences"
@@ -427,23 +458,40 @@ function App() {
           <div>
             <p className="kicker">YOUR ROTATION</p>
             <h2 id="preferences-title">Notification preferences</h2>
-            <p>
-              Choose and save the reminders you want. Your choices are stored now; email delivery is
-              not active yet.
-            </p>
-            <div className="delivery-status" role="status">
-              <strong>Email delivery</strong>
-              <span>
-                Not active yet. These settings are saved for when a verified delivery service is
-                connected.
-              </span>
-            </div>
+            <p>Choose which emails you get and when. You can turn everything off at any time.</p>
+            {!emailDeliveryLive && (
+              <div className="delivery-status" role="status">
+                <strong>Email delivery</strong>
+                <span>
+                  Not active yet. These settings are saved for when email delivery goes live.
+                </span>
+              </div>
+            )}
+            <button
+              className="unsubscribe-all"
+              type="button"
+              disabled={
+                preferencesBusy ||
+                (!notificationPreferences.email_enabled &&
+                  !notificationPreferences.digest_enabled &&
+                  !notificationPreferences.restock_enabled)
+              }
+              onClick={() =>
+                void updateNotificationPreferences({
+                  email_enabled: false,
+                  digest_enabled: false,
+                  restock_enabled: false,
+                })
+              }
+            >
+              Turn off all email
+            </button>
           </div>
           <div className="preference-options">
             <label>
               <span>
                 <strong>Email reminders</strong>
-                <small>Save your reminder preference for releases you save.</small>
+                <small>Get reminded before releases you save.</small>
               </span>
               <input
                 type="checkbox"
@@ -457,7 +505,7 @@ function App() {
             <label>
               <span>
                 <strong>Weekly digest</strong>
-                <small>Save your weekly digest preference.</small>
+                <small>A weekly roundup of upcoming drops. Coming soon.</small>
               </span>
               <input
                 type="checkbox"
@@ -471,7 +519,7 @@ function App() {
             <label>
               <span>
                 <strong>Restock alerts</strong>
-                <small>Save your preference for saved pairs returning.</small>
+                <small>Hear when saved pairs come back. Coming soon.</small>
               </span>
               <input
                 type="checkbox"
@@ -515,11 +563,23 @@ function App() {
               />{" "}
               1 hour before
             </label>
-            <div className="timezone-setting">
+            <label className="timezone-setting">
               <strong>Timezone</strong>
-              <span>{formatNotificationTimezone(notificationPreferences.timezone)}</span>
+              <select
+                value={notificationPreferences.timezone}
+                disabled={preferencesBusy}
+                onChange={(event) =>
+                  void updateNotificationPreferences({ timezone: event.target.value })
+                }
+              >
+                {[...new Set([notificationPreferences.timezone, ...usTimezones])].map((zone) => (
+                  <option key={zone} value={zone}>
+                    {formatNotificationTimezone(zone)}
+                  </option>
+                ))}
+              </select>
               <small>Used for reminder times.</small>
-            </div>
+            </label>
           </fieldset>
           {preferencesBusy && (
             <p className="preference-status" role="status">
@@ -531,6 +591,44 @@ function App() {
               {preferencesMessage}
             </p>
           )}
+        </section>
+      )}
+
+      {route === "notifications" && !user && (
+        <section className="preferences-panel signed-out-settings" aria-labelledby="settings-title">
+          <div>
+            <p className="kicker">YOUR ROTATION</p>
+            <h2 id="settings-title">Notification settings</h2>
+            <p>
+              {supabase
+                ? "Sign in with the email you get reminders at to change or turn off your emails. We'll send you a one-time sign-in link."
+                : "Account features are not available on this deployment."}
+            </p>
+            {supabase && (
+              <form className="settings-signin" onSubmit={requestMagicLink}>
+                <label className="sr-only" htmlFor="settings-email">
+                  Email address
+                </label>
+                <input
+                  id="settings-email"
+                  type="email"
+                  autoComplete="email"
+                  value={authEmail}
+                  onChange={(event) => setAuthEmail(event.target.value)}
+                  placeholder="you@example.com"
+                  required
+                />
+                <button type="submit" disabled={authBusy}>
+                  {authBusy ? "Sending..." : "Email me a sign-in link"}
+                </button>
+              </form>
+            )}
+            {authMessage && (
+              <p className="settings-signin-status" role="status">
+                {authMessage}
+              </p>
+            )}
+          </div>
         </section>
       )}
 
@@ -549,27 +647,26 @@ function App() {
             Release dates, first looks, and the stories behind the pairs everyone is talking about.
           </p>
           <a className="hero-link" href="#releases">
-            Explore today's drops <span>↘</span>
+            Explore upcoming drops <span>↘</span>
           </a>
         </div>
         <div className="hero-art">
-          <div className="art-sticker">
-            NEW
+          <div className="art-sticker" aria-hidden="true">
+            US
             <br />
-            THIS
+            DROPS
             <br />
-            WEEK
+            ONLY
           </div>
           <img
             src="https://images.unsplash.com/photo-1514989940723-e8e51635b782?auto=format&fit=crop&w=1200&q=90"
             alt="Red and white sneaker in motion"
           />
           <div className="hero-caption">
-            <span>01 / 04</span>
             <strong>
-              THE SUMMER
+              DATES · PRICES
               <br />
-              ROTATION
+              WHERE TO BUY
             </strong>
           </div>
         </div>
@@ -580,7 +677,8 @@ function App() {
           <div>
             <p className="kicker">STAY AHEAD</p>
             <h2>
-              Upcoming releases <sup>{releases.length.toString().padStart(2, "0")}</sup>
+              Upcoming releases{" "}
+              {!loading && <sup>{releases.length.toString().padStart(2, "0")}</sup>}
             </h2>
           </div>
           <div className="tabs">
@@ -597,14 +695,20 @@ function App() {
         </div>
         <div className={`catalog-source ${dataSource}`} role="status">
           <strong>
-            {dataSource === "live" ? "LIVE SUPABASE CATALOG" : "DEMO FALLBACK CATALOG"}
+            {loading
+              ? "CONNECTING"
+              : dataSource === "live"
+                ? "LIVE SUPABASE CATALOG"
+                : "DEMO FALLBACK CATALOG"}
           </strong>
           <span>
-            {dataSource === "live"
-              ? "Published US releases from the connected database."
-              : (loadError ?? "Supabase is not configured. This catalog is sample data.")}
+            {loading
+              ? "Loading published US releases."
+              : dataSource === "live"
+                ? "Published US releases from the connected database."
+                : (loadError ?? "Supabase is not configured. This catalog is sample data.")}
           </span>
-          {loadError && <button onClick={fetchReleases}>Retry connection ↗</button>}
+          {loadError && supabase && <button onClick={fetchReleases}>Retry connection ↗</button>}
         </div>
         {(authMessage || pendingSaves.length > 0) && (
           <div className="status-message" role="status">
@@ -724,7 +828,9 @@ function App() {
               ? "No saved releases match your search."
               : activeTab === "This week"
                 ? "No releases are scheduled this week."
-                : "No releases match your search."}
+                : releases.length === 0
+                  ? "No upcoming releases are published right now. Check back soon."
+                  : "No releases match your search."}
           </p>
         )}
       </section>
@@ -820,25 +926,34 @@ function App() {
               <div className="retailer-state">
                 <p className="kicker">OFFICIAL RETAILERS</p>
                 {selectedRelease.retailers.length > 0 ? (
-                  <ul>
-                    {selectedRelease.retailers.map((retailer) => (
-                      <li key={retailer.url}>
-                        <div>
-                          <strong>{retailer.name}</strong>
-                          <small>{retailer.availabilityStatus.replace("_", " ")}</small>
-                          <small>{formatRetailerDateTime(retailer, selectedRelease)}</small>
-                        </div>
-                        {isSafeRetailerUrl(retailer.url) ? (
-                          <a href={retailer.url} target="_blank" rel="noreferrer">
-                            {retailerActionLabel(retailer.launchType, retailer.availabilityStatus)}{" "}
-                            <span>↗</span>
-                          </a>
-                        ) : (
-                          <span className="action-unavailable">Launch link unavailable</span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
+                  <>
+                    <ul>
+                      {selectedRelease.retailers.map((retailer) => (
+                        <li key={retailer.url}>
+                          <div>
+                            <strong>{retailer.name}</strong>
+                            <small>{retailer.availabilityStatus.replace("_", " ")}</small>
+                            <small>{formatRetailerDateTime(retailer, selectedRelease)}</small>
+                          </div>
+                          {isSafeRetailerUrl(retailer.url) ? (
+                            <a href={retailer.url} target="_blank" rel="noreferrer">
+                              {retailerActionLabel(
+                                retailer.launchType,
+                                retailer.availabilityStatus,
+                              )}{" "}
+                              <span>↗</span>
+                            </a>
+                          ) : (
+                            <span className="action-unavailable">Launch link unavailable</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="affiliate-note">
+                      Some retailer links may earn us a commission.{" "}
+                      <a href={`${routePaths.terms}#affiliate-disclosure`}>Learn more</a>
+                    </p>
+                  </>
                 ) : (
                   <>
                     <p>Official launch links are not available yet.</p>
@@ -851,77 +966,93 @@ function App() {
         </div>
       )}
 
-      <section className="lower-content" id="news">
-        <div className="news-column">
-          <div className="section-heading compact">
-            <div>
-              <p className="kicker">THE FEED</p>
-              <h2>Fresh from the culture</h2>
+      <section className={`lower-content ${articles.length ? "" : "no-news"}`} id="news">
+        {articles.length > 0 && (
+          <div className="news-column">
+            <div className="section-heading compact">
+              <div>
+                <p className="kicker">THE FEED</p>
+                <h2>Fresh from the culture</h2>
+              </div>
             </div>
-            <span className="view-all muted-control">Editorial preview</span>
+            <div className="article-grid">
+              {articles.map((article) => {
+                const href =
+                  article.source_url && isSafeRetailerUrl(article.source_url)
+                    ? article.source_url
+                    : null;
+                return (
+                  <article className="news-card" key={article.id}>
+                    <div className="news-card-copy">
+                      <p className="kicker">{article.category.toUpperCase()}</p>
+                      <h3>
+                        {href ? (
+                          <a href={href} target="_blank" rel="noreferrer">
+                            {article.title}
+                          </a>
+                        ) : (
+                          article.title
+                        )}
+                      </h3>
+                      {article.excerpt && <p className="news-excerpt">{article.excerpt}</p>}
+                      {formatArticleDate(article.published_at) && (
+                        <p className="read-time">{formatArticleDate(article.published_at)}</p>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
           </div>
-          <div className="article-grid">
-            {articles.map((article) => (
-              <article className="news-card" key={article.title}>
-                <img src={article.image} alt="" />
-                <div className="news-card-copy">
-                  <p className="kicker">{article.tag}</p>
-                  <h3>{article.title}</h3>
-                  <p className="read-time">
-                    {article.time} <span>→</span>
-                  </p>
-                </div>
-              </article>
-            ))}
-          </div>
-        </div>
+        )}
         <aside className="newsletter">
-          <p className="kicker">NOISE, FILTERED</p>
-          <h2>Get the good stuff.</h2>
+          <p className="kicker">NEVER MISS A DROP</p>
+          <h2>Get reminded before it drops.</h2>
           <p>
-            A tight edit of the week's best drops, stories, and things worth knowing. In your inbox
-            every Friday.
+            Create a free account to save releases and choose when we email you: 24 hours or 1 hour
+            before launch.
           </p>
-          {newsletterSubmitted ? (
+          {!supabase ? (
             <p className="newsletter-result" role="status">
-              Email captured locally. Newsletter delivery is not connected yet.
+              Accounts are not available on this deployment.
+            </p>
+          ) : user ? (
+            <p className="newsletter-result" role="status">
+              You're signed in. Tap the heart on any release to save it, and manage reminders in{" "}
+              <a href={routePaths.notifications}>notification settings</a>.
+            </p>
+          ) : signupSent ? (
+            <p className="newsletter-result" role="status">
+              Check your inbox for a sign-in link to finish creating your account.
             </p>
           ) : (
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (!/^\S+@\S+\.\S+$/.test(newsletterEmail)) {
-                  setNewsletterError("Enter a valid email address.");
-                  return;
-                }
-                setNewsletterError("");
-                setNewsletterSubmitted(true);
-              }}
-            >
-              <label htmlFor="newsletter-email">Email address</label>
+            <form onSubmit={requestSignup} noValidate>
+              <label htmlFor="signup-email">Email address</label>
               <input
-                id="newsletter-email"
+                id="signup-email"
                 type="email"
-                value={newsletterEmail}
-                onChange={(event) => setNewsletterEmail(event.target.value)}
+                autoComplete="email"
+                value={signupEmail}
+                onChange={(event) => setSignupEmail(event.target.value)}
                 placeholder="you@example.com"
                 required
               />
-              <button type="submit">Save my email ↗</button>
-              {newsletterError && <small className="newsletter-error">{newsletterError}</small>}
+              <button type="submit" disabled={authBusy}>
+                {authBusy ? "Sending..." : "Create free account ↗"}
+              </button>
+              {signupError && (
+                <small className="newsletter-error" role="alert">
+                  {signupError}
+                </small>
+              )}
             </form>
           )}
-          <small>No spam. Just sneakers.</small>
+          <small>
+            No spam. Unsubscribe anytime. <a href={routePaths.privacy}>Privacy</a>
+          </small>
         </aside>
       </section>
-      <footer>
-        <span className="wordmark">
-          <span>SNKR</span>
-          <i>signal</i>
-        </span>
-        <span>Built for the rotation · © {new Date().getFullYear()}</span>
-        <span>Instagram &nbsp; X &nbsp; Contact</span>
-      </footer>
+      <SiteFooter />
     </main>
   );
 }
