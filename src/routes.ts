@@ -1,4 +1,5 @@
-export type Route = "home" | "notifications" | "privacy" | "terms" | "not-found";
+export type Route =
+  "home" | "notifications" | "privacy" | "terms" | "editor" | "unsubscribe" | "not-found";
 
 /** Paths the app serves. Hosting must rewrite all of them to index.html (see vercel.json). */
 export const routePaths: Record<Exclude<Route, "not-found">, string> = {
@@ -6,6 +7,8 @@ export const routePaths: Record<Exclude<Route, "not-found">, string> = {
   notifications: "/settings/notifications",
   privacy: "/privacy",
   terms: "/terms",
+  editor: "/editor",
+  unsubscribe: "/unsubscribe",
 };
 
 export function getRoute(pathname: string): Route {

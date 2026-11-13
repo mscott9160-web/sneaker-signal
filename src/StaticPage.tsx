@@ -87,7 +87,8 @@ export function PrivacyPage() {
       <ul>
         <li>
           Turn off any email at any time in{" "}
-          <a href={routePaths.notifications}>notification settings</a>.
+          <a href={routePaths.notifications}>notification settings</a>, or with the unsubscribe link
+          in any email we send, which works without signing in.
         </li>
         <li>Remove saved releases at any time from the catalog.</li>
         <li>Ask us to delete your account and data by contacting us.</li>

@@ -197,3 +197,15 @@ export async function listPublishedArticles(
 
   return { articles: data ?? [], error: error?.message ?? null };
 }
+
+/** No-sign-in unsubscribe used by the /unsubscribe page. Unknown tokens return `found: false`. */
+export async function unsubscribeWithToken(
+  token: string,
+): Promise<{ found: boolean; error: string | null }> {
+  if (!supabase) return { found: false, error: "Supabase is not configured." };
+  const { data, error } = await (supabase as unknown as SupabaseClient).rpc(
+    "unsubscribe_by_token",
+    { p_token: token },
+  );
+  return { found: data === true, error: error?.message ?? null };
+}

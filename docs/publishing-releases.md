@@ -1,8 +1,33 @@
 # Publishing a Release
 
-Until the in-app editorial workflow (backlog SS-002) exists, editors publish releases from the
-**Supabase Dashboard → SQL Editor** of the production project. The SQL Editor runs as the database
-owner, so only people with dashboard access to the project can publish.
+Editors publish from the **release desk** at `/editor` on the site. Signed-in editors also see an
+**Editor** link in the site header.
+
+## Making someone an editor
+
+Editors sign in with their normal Sneaker Signal account (they must have signed in once so the
+account exists). Then the project owner runs this in **Supabase Dashboard → SQL Editor**:
+
+```sql
+update public.profiles set role = 'editor'
+where id = (select id from auth.users where email = 'editor@example.com');
+```
+
+To remove access, set `role = 'user'`. Users cannot change their own role.
+
+## How the release desk works
+
+- **Save draft** stores the release without making it public. **Publish** makes it live at once.
+- Every save goes through one database function, so the product, release, source and retailer
+  link are saved together or not at all.
+- The database enforces the rules below. If something is missing, the form shows exactly what,
+  for example "A confirmed release needs at least one official retailer link."
+- Sources are never edited or deleted. When you re-check a release, add the new source; the
+  release's "last verified" time updates.
+- **Archive** asks for a reason and hides the release from the site. Archived releases stay in
+  the database.
+- Every change is recorded in `public.editorial_changes` with the editor, before/after values
+  and the note you typed.
 
 Production starts with an **empty catalog**: migration `202611130002` archived the prototype seed
 releases because their sources were never captured by an editor. The site shows
@@ -10,16 +35,24 @@ releases because their sources were never captured by an editor. The site shows
 
 ## Rules before you publish
 
-From `docs/production-readiness.md`:
+From `docs/production-readiness.md`. Rules marked ✱ are enforced by the database:
 
 - Every fact (date, time, price, retailer link) must come from a source you opened yourself.
   Prefer Tier 1 (the brand's own launch page) or Tier 2 (an authorized US retailer).
 - Never publish a date, price or link that only came from AI output or a community tip.
-- Retailer and source URLs must be `https://`. The site hides anything else.
-- Use `status = 'tentative'` when the brand hasn't confirmed the date. Reminder emails are only
-  sent for `confirmed` releases.
+- ✱ A published release needs at least one verified source, and a tier 5 source (AI-assisted or
+  community) can't be the only one.
+- ✱ A **confirmed** published release also needs a launch date and time, a retail price, a tier 1
+  or 2 source and at least one retailer link.
+- ✱ Image, source and retailer URLs must be `https://`.
+- ✱ Archiving needs a reason.
+- Use status **tentative** when the brand hasn't confirmed the date. Reminder emails are only
+  sent for **confirmed** releases.
 
-## Template
+## SQL fallback
+
+If the site is down, an owner can publish from the SQL Editor instead. This bypasses the
+release desk's checks, so follow the rules above by hand.
 
 Replace every `<...>` value, then run the whole block. It runs in one transaction: if any line
 fails, nothing is published.

@@ -18,3 +18,5 @@ done
 run docs/migration-smoke-test.sql
 echo "schema smoke test passed"
 run docs/rls-behavior-test.sql
+run docs/editor-workflow-test.sql
+run docs/unsubscribe-test.sql

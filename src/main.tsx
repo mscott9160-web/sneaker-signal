@@ -5,6 +5,6 @@ import { Router } from "./Router";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <Router pathname={window.location.pathname} />
+    <Router pathname={window.location.pathname} search={window.location.search} />
   </StrictMode>,
 );

@@ -23,6 +23,8 @@
 
 - [x] Fixed anonymous catalog reads: editor policies are scoped to `authenticated` (migration `202611130001`), with an RLS behavior test in CI.
 - [x] Prototype seed releases archived from production (migration `202611130002`); publishing runbook in `docs/publishing-releases.md`.
+- [x] In-app release desk at `/editor` (SS-002): database-enforced publishing rules, atomic saves, archive with reason, audit trail; behavior-tested in CI.
+- [x] One-click unsubscribe without sign-in: per-user token, `/unsubscribe` confirmation page, RFC 8058 `unsubscribe` Edge Function, and headers on every reminder email.
 - [x] Production web basics: privacy, terms, affiliate disclosure, 404, `/settings/notifications` with turn-off-all-email, timezone choice, Vercel routing and security headers.
 
 - [x] Product scope, audience, US region, USD currency, and MVP boundaries defined.

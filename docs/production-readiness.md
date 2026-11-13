@@ -189,7 +189,7 @@ The delivery table uses a unique key, database claim function, lease timestamps,
 - [ ] Create development and production Supabase projects.
 - [ ] Run the initial migration in development and verify all tables, indexes, triggers, and RLS policies. (CI now applies every migration to PostgreSQL 16 and runs `docs/migration-smoke-test.sql` and `docs/rls-behavior-test.sql` via `scripts/validate-db.sh`; still confirm once on a hosted Supabase development project.)
 - [x] Replace the editor boolean with the `public.app_role` enum before inviting additional staff; only the `editor` role receives protected editorial policies, and profile self-updates cannot change roles.
-- [ ] Add protected editor policies for creating, reviewing, publishing, archiving, and correcting releases and articles.
+- [ ] Add protected editor policies for creating, reviewing, publishing, archiving, and correcting releases and articles. (Releases: done through `editor_save_release` / `editor_set_release_state` and the `/editor` release desk. Articles: still open.)
 - [ ] Add article records with author, category, source, publication status, published timestamp, and correction history.
 - [x] Add a seed-data review step so no demo dates, placeholder profiles, or unverified image URLs reach production. Migration `202611130002` archives the prototype seed releases; new releases follow `docs/publishing-releases.md`.
 - [x] Add `docs/migration-smoke-test.sql`; run it after `npx supabase db reset` against the isolated local database or hosted development project.

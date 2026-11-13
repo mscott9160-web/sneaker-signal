@@ -11,6 +11,7 @@ import {
   type RetailerLaunch,
 } from "./release-data";
 import { catalogLoadFailure } from "./release-model";
+import { checkIsEditor } from "./editor-api";
 import { SiteFooter } from "./SiteFooter";
 import { emailDeliveryLive, routePaths, type Route } from "./routes";
 import {
@@ -152,6 +153,20 @@ function App({ route }: { route: Extract<Route, "home" | "notifications"> }) {
   const [preferencesBusy, setPreferencesBusy] = useState(false);
   const [preferencesMessage, setPreferencesMessage] = useState("");
   const [pendingSaves, setPendingSaves] = useState<string[]>([]);
+  const [isEditor, setIsEditor] = useState(false);
+  useEffect(() => {
+    if (!user) {
+      setIsEditor(false);
+      return;
+    }
+    let active = true;
+    checkIsEditor().then((result) => {
+      if (active) setIsEditor(result);
+    });
+    return () => {
+      active = false;
+    };
+  }, [user]);
   const saveOperations = useRef<Record<string, number>>({});
 
   const fetchReleases = () => {
@@ -408,6 +423,11 @@ function App({ route }: { route: Extract<Route, "home" | "notifications"> }) {
           </label>
           {user ? (
             <>
+              {isEditor && (
+                <a className="account-control" href={routePaths.editor}>
+                  Editor
+                </a>
+              )}
               <button
                 className="account-control"
                 onClick={() => setPreferencesOpen((open) => !open)}

@@ -1268,3 +1268,22 @@ footer a.wordmark {
 .settings-signin-status {
   margin-top: 10px !important;
 }
+
+.unsubscribe-confirm {
+  border: 0;
+  background: var(--coral);
+  color: white;
+  padding: 12px 20px;
+  font: 12px var(--mono);
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  margin: 8px 0 20px;
+}
+.unsubscribe-confirm:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+a.account-control {
+  text-decoration: none;
+}

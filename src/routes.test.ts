@@ -8,6 +8,8 @@ describe("routes", () => {
     expect(getRoute("/settings/notifications/")).toBe("notifications");
     expect(getRoute("/privacy")).toBe("privacy");
     expect(getRoute("/terms")).toBe("terms");
+    expect(getRoute("/editor")).toBe("editor");
+    expect(getRoute("/unsubscribe")).toBe("unsubscribe");
   });
 
   it("treats anything else as not found", () => {
