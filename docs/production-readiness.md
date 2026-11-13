@@ -187,20 +187,24 @@ The delivery table uses a unique key, database claim function, lease timestamps,
 ## Additional Implementation To-Dos
 
 - [ ] Create development and production Supabase projects.
-- [ ] Run the initial migration in development and verify all tables, indexes, triggers, and RLS policies.
+- [ ] Run the initial migration in development and verify all tables, indexes, triggers, and RLS policies. (CI now applies every migration to PostgreSQL 16 and runs `docs/migration-smoke-test.sql` and `docs/rls-behavior-test.sql` via `scripts/validate-db.sh`; still confirm once on a hosted Supabase development project.)
 - [x] Replace the editor boolean with the `public.app_role` enum before inviting additional staff; only the `editor` role receives protected editorial policies, and profile self-updates cannot change roles.
 - [ ] Add protected editor policies for creating, reviewing, publishing, archiving, and correcting releases and articles.
 - [ ] Add article records with author, category, source, publication status, published timestamp, and correction history.
-- [ ] Add a seed-data review step so no demo dates, placeholder profiles, or unverified image URLs reach production.
+- [x] Add a seed-data review step so no demo dates, placeholder profiles, or unverified image URLs reach production. Migration `202611130002` archives the prototype seed releases; new releases follow `docs/publishing-releases.md`.
 - [x] Add `docs/migration-smoke-test.sql`; run it after `npx supabase db reset` against the isolated local database or hosted development project.
 - [ ] Document the backup, restore, and migration rollback procedure.
 - [ ] Add an operational runbook for stale sources, conflicting dates, broken retailer links, and emergency unpublishing.
+
+## Launch Path
+
+`docs/launch-checklist.md` lists the account-side steps for a free-tier launch, in order.
 
 ## Known Blockers
 
 ### Local Supabase Requires Docker
 
-**Status:** Blocked on local machine setup as of 2026-08-16.
+**Status:** Blocked on local machine setup as of 2026-08-16. No longer blocks migration validation: `scripts/validate-db.sh` runs the migrations, smoke test and RLS behavior test on plain PostgreSQL (CI job `database`).
 
 Docker Desktop is installed and the Docker CLI is available at `C:\Program Files\Docker\Docker\resources\bin\docker.exe`, but Docker Desktop cannot start because Windows Subsystem for Linux (WSL) is not installed. `npx supabase db lint` consequently cannot connect to the local Postgres container at `127.0.0.1:54322`.
 

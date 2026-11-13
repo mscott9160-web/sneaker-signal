@@ -43,12 +43,18 @@ npm install
 npm run dev
 ```
 
+Going to production? Start with [docs/launch-checklist.md](docs/launch-checklist.md).
+
 Validate the app before opening a pull request:
 
 ```powershell
 npm run lint
+npm run format:check
+npm test
 npm run build
 ```
+
+Database migrations and RLS behavior are checked in CI by `scripts/validate-db.sh` against PostgreSQL 16. Run it yourself against an empty throwaway database with `DATABASE_URL=... scripts/validate-db.sh`.
 
 ## Supabase
 

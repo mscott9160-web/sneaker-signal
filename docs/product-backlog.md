@@ -1,6 +1,6 @@
 # Sneaker Signal Product Backlog
 
-**As of:** 2026-09-12  
+**As of:** 2026-11-13  
 **MVP:** US sneaker release intelligence for collectors and everyday buyers  
 **Delivery posture:** Production-oriented prototype; dry-run reminder path is defined, but live email and full production MVP are not ready.
 
@@ -17,9 +17,13 @@
 | Reminder function | Implementation present | Secret-gated Edge Function, eligibility policy, claims, retries, dead-letter handling, and `DRY_RUN` behavior are present. Deployment and integration evidence are still required. |
 | Email production | Not ready | Resend configuration, sender/domain verification, scheduler, provider events, unsubscribe behavior, and live delivery evidence are outstanding. |
 | Billing / Plus | Not started | Stripe Checkout, Customer Portal, webhook reconciliation, entitlement state, and paid acceptance checks remain open. |
-| Automated quality | Partial | Focused Vitest coverage exists for release mapping/model/client contracts. Migration, function, RLS, ingestion, save, email, unsubscribe, and retailer-link tests remain. |
+| Automated quality | Partial | Vitest covers release mapping, timing, demo data, routes, and client contracts. CI applies all migrations to PostgreSQL and runs schema and RLS behavior tests. Edge Function integration, ingestion, email, and unsubscribe tests remain. |
 
 ## Completed Milestones
+
+- [x] Fixed anonymous catalog reads: editor policies are scoped to `authenticated` (migration `202611130001`), with an RLS behavior test in CI.
+- [x] Prototype seed releases archived from production (migration `202611130002`); publishing runbook in `docs/publishing-releases.md`.
+- [x] Production web basics: privacy, terms, affiliate disclosure, 404, `/settings/notifications` with turn-off-all-email, timezone choice, Vercel routing and security headers.
 
 - [x] Product scope, audience, US region, USD currency, and MVP boundaries defined.
 - [x] Free versus paid subscription promise and non-guarantees documented.
