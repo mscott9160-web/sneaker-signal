@@ -412,3 +412,12 @@ enabled = true
 # declarative_schema_path = "./database"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
+
+# Both functions are called without a Supabase user session: the reminder job by the
+# protected scheduler (it checks x-reminder-secret itself), and unsubscribe by mail
+# providers following the List-Unsubscribe header.
+[functions.send-release-reminders]
+verify_jwt = false
+
+[functions.unsubscribe]
+verify_jwt = false

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { formatReminderDate, isReminderDue, reminderScheduledFor } from "./reminder";
+import {
+  buildReminderEmail,
+  formatReminderDate,
+  isReminderDue,
+  reminderScheduledFor,
+} from "./reminder";
 
 describe("release reminder windows", () => {
   const candidate = {
@@ -23,5 +28,30 @@ describe("release reminder windows", () => {
 
   it("does not throw for an invalid timezone", () => {
     expect(formatReminderDate({ ...candidate, timezone: "Not/A_Timezone" })).toBeNull();
+  });
+});
+
+describe("reminder email", () => {
+  const email = buildReminderEmail({
+    releaseName: "Air Max 1",
+    releaseDate: "Saturday, December 5, 2026 at 10:00 AM",
+    appUrl: "https://sneakersignal.example/",
+    supabaseUrl: "https://abc.supabase.co",
+    unsubscribeToken: "3f1c2b4a-9d8e-4c7b-a6f5-1e2d3c4b5a69",
+  });
+
+  it("includes settings and no-sign-in unsubscribe links in the body", () => {
+    expect(email.text).toContain("https://sneakersignal.example/settings/notifications");
+    expect(email.text).toContain(
+      "https://sneakersignal.example/unsubscribe?token=3f1c2b4a-9d8e-4c7b-a6f5-1e2d3c4b5a69",
+    );
+  });
+
+  it("sets RFC 8058 one-click headers pointing at the unsubscribe function", () => {
+    expect(email.headers).toEqual({
+      "List-Unsubscribe":
+        "<https://abc.supabase.co/functions/v1/unsubscribe?token=3f1c2b4a-9d8e-4c7b-a6f5-1e2d3c4b5a69>",
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    });
   });
 });

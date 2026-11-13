@@ -1,5 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { formatReminderDate, isReminderDue, reminderScheduledFor } from "./reminder.ts";
+import {
+  buildReminderEmail,
+  formatReminderDate,
+  isReminderDue,
+  reminderScheduledFor,
+} from "./reminder.ts";
 import {
   constantTimeEqual,
   hasSelectedReminderHour,
@@ -113,7 +118,7 @@ Deno.serve(async (request) => {
 
   const { data: preferenceRows, error: preferenceError } = await admin
     .from("notification_preferences")
-    .select("user_id, email_enabled, reminder_hours, timezone")
+    .select("user_id, email_enabled, reminder_hours, timezone, unsubscribe_token")
     .eq("email_enabled", true);
   if (preferenceError)
     return json(
@@ -193,7 +198,13 @@ Deno.serve(async (request) => {
       }
       const releaseName = product?.name ?? "Saved sneaker release";
       const releaseDate = formatReminderDate(candidate) ?? release.release_at;
-      const preferencesUrl = `${appUrl}/settings/notifications`;
+      const message = buildReminderEmail({
+        releaseName,
+        releaseDate,
+        appUrl: appUrl!,
+        supabaseUrl,
+        unsubscribeToken: preferences.unsubscribe_token,
+      });
       let response: Response;
       try {
         response = await fetch("https://api.resend.com/emails", {
@@ -202,8 +213,9 @@ Deno.serve(async (request) => {
           body: JSON.stringify({
             from: fromEmail,
             to: [email],
-            subject: `${releaseName} releases soon`,
-            text: `${releaseName} releases ${releaseDate}. Manage notification preferences: ${preferencesUrl}`,
+            subject: message.subject,
+            text: message.text,
+            headers: message.headers,
           }),
         });
       } catch {
